@@ -151,6 +151,65 @@ climbs.
 > checkpoint before the context wall, and `session usage` to catch a rate wall (or a model-tier
 > wall) *before* it bites.
 
+### D. Hand-off & carry-on — never lose a session to a wall
+
+The hooks *warn* you; this pattern lets you actually *survive* a wall or a full context window
+without losing decisions, lessons, or your place. It's a two-file idea: a **hand-off file** the
+agent writes before the wall, and a **carry-on** trigger a fresh session uses to resume.
+
+**1. The hand-off file (`HandOff.md`).** When a wall or context limit approaches, have the agent
+write a `HandOff.md` in the working directory capturing everything a clean session needs:
+
+```markdown
+# HandOff — <project> — <date>
+## Decisions made        (choices locked in this session)
+## What was done         (with file paths / commit hashes)
+## Lessons learned        (gotchas worth keeping — the durable notes)
+## Outstanding            (next actions, in priority order, with paths)
+## First action next time (the single thing to do first)
+```
+
+Keep it at the working-dir root and **commit it** so it travels across machines and survives a
+context clear. This file — not the chat scrollback — is your memory; scrollback is gone after
+you clear.
+
+**2. Tell the agent to write it automatically.** Add a standing rule to your `CLAUDE.md`
+(user-level or project):
+
+> When `session context` reaches ~60%, or `session usage` reports the 5-hour wall ≥85%: finish
+> only the in-flight step, then write/update `HandOff.md` (decisions, lessons, outstanding, first
+> next action), commit and push it, and tell me to start a fresh session. Don't start new work.
+
+The section-C / context hooks already inject that reminder at the thresholds — this rule tells the
+agent what to *do* with it.
+
+**3. Save lessons safely.** Treat the `## Lessons learned` block as durable: anything you learned
+that you'd hate to rediscover goes there (or into a committed `notes/` folder). Because it's in a
+committed file, it outlives the session, the context clear, and a move to another machine.
+
+**4. The carry-on trigger.** Give a fresh session a one-word resume. Add to your `CLAUDE.md`:
+
+> When I say **carry on**, read `HandOff.md` in the working directory, summarise in one line where
+> we left off, then resume from the first outstanding action.
+
+(You can also make this a Claude Code skill or slash command so it's discoverable in the menu.)
+
+**5. What you (the user) type at the wall.** The loop is:
+
+1. The agent hits the threshold, writes `HandOff.md`, commits + pushes, and says:
+   *"Hand-off written — start a new session and type `carry on`."*
+2. You **clear the context** — run `/clear` (or just open a new session).
+3. You type **`carry on`**.
+4. The fresh session reads `HandOff.md`, tells you where you were, and continues — no re-reading
+   the whole history, no lost lessons.
+
+**Why clear instead of continuing?** A `/clear`-ed session re-reads only the compact `HandOff.md`,
+so it starts cheap and accurate. Continuing a near-full session keeps paying for the bloated
+context on every turn — and risks the very wall you're trying to dodge.
+
+> **Ready-made copies** of both hooks, a `carry-on` skill, the `HandOff.md` template, and a
+> `CLAUDE.md` snippet live in [`examples/`](examples/) — copy them in and edit the paths.
+
 ---
 
 ## 3. Build the installer from source
