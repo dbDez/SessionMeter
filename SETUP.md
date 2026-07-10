@@ -52,10 +52,10 @@ Add a `statusLine` to your Claude Code `settings.json`
 That prints e.g. `sessionmeter: 24.8% (247,834 / 1,000,000 tokens)` in the status bar,
 refreshed by Claude Code as you work. Drop the `-split` if you want the full line.
 
-### B. A UserPromptSubmit hook (optional — nudge near a wall)
+### B. A context-budget hook (nudge before the context wall)
 
-Any hook can shell out to `session`. A minimal PowerShell hook that warns when the context
-window passes 80% (measured, so the model never has to guess):
+Any hook can shell out to `session`. A minimal `UserPromptSubmit` hook that warns when the
+context window passes 80% (measured, so the model never has to guess):
 
 ```powershell
 # warn-context.ps1  — UserPromptSubmit hook
@@ -71,27 +71,85 @@ if ($line -match '(\d+(?:\.\d+)?)%') {
 exit 0
 ```
 
-Register it in `settings.json`:
+### C. A rate-wall hook (5-hour / 7-day / per-model)
+
+`session usage` exposes three different walls — and they are **not equally urgent**:
+
+| Wall | What it does | Suggested nudge / act |
+|---|---|---|
+| **5-hour session** | truncates the **current** run mid-task | nudge **75%** · act **85%** (finish + hand off) |
+| **7-day window** | caps the week; recovers slowly | nudge **90%** · warn **95%** |
+| **per-model (scoped)** | one model tier's own weekly cap (e.g. a cheaper/faster tier) | **switch that tier to Opus 4.8 at ~90%** (see below) |
+
+`session usage --raw` prints the raw JSON, which a hook can parse for exact percentages. This
+`UserPromptSubmit` hook applies per-wall thresholds and, when a scoped model wall is nearly
+exhausted, tells the model to **switch that tier's agents to Opus 4.8**:
+
+```powershell
+# warn-usage.ps1  — UserPromptSubmit hook
+$raw = (session usage --raw 2>$null | Out-String)
+$i = $raw.IndexOf('{'); if ($i -lt 0) { exit 0 }
+try { $u = $raw.Substring($i) | ConvertFrom-Json } catch { exit 0 }
+
+$msgs = @()
+$five  = [int]$u.five_hour.utilization
+$seven = [int]$u.seven_day.utilization
+if     ($five  -ge 85) { $msgs += "5-hour wall at $five% — finish the in-flight step, write a handoff, commit + push now." }
+elseif ($five  -ge 75) { $msgs += "5-hour wall at $five% — plan the handoff; avoid launching long agents." }
+if     ($seven -ge 95) { $msgs += "7-day wall at $seven% — checkpoint and pace remaining runs." }
+elseif ($seven -ge 90) { $msgs += "7-day wall at $seven% — approaching the weekly cap." }
+
+# Per-model (scoped) walls live in $u.limits[] as kind 'weekly_scoped'
+foreach ($lim in @($u.limits | Where-Object { $_.kind -eq 'weekly_scoped' })) {
+    if ([int]$lim.percent -ge 90) {
+        $model = $lim.scope.model.display_name
+        $msgs += "The '$model' weekly wall is at $($lim.percent)% — switch any agents dispatched on the '$model' tier to Opus 4.8 (model: opus). A dispatch on an exhausted tier fails instantly."
+    }
+}
+
+if ($msgs.Count) {
+    @{ hookSpecificOutput = @{ hookEventName = 'UserPromptSubmit'
+       additionalContext = ($msgs -join "`n") } } | ConvertTo-Json -Depth 4 -Compress
+}
+exit 0
+```
+
+### Register the hooks
+
+Point Claude Code at whichever hooks you want in `settings.json`
+(`~/.claude/settings.json`, or a project's `.claude/settings.json`):
 
 ```jsonc
 {
   "hooks": {
     "UserPromptSubmit": [
-      { "hooks": [ { "type": "command",
-        "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File C:/path/to/warn-context.ps1",
-        "timeout": 10 } ] }
+      { "hooks": [
+        { "type": "command", "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File C:/path/to/warn-context.ps1", "timeout": 10 },
+        { "type": "command", "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File C:/path/to/warn-usage.ps1",   "timeout": 10 }
+      ] }
     ]
   }
 }
 ```
 
-Use `session usage` the same way to watch the **5-hour / 7-day** rate walls that truncate
-long runs. Both commands are safe to call frequently — `context` just reads a local file;
-`usage` reads your existing OAuth window.
+### Auto-switch a cheaper model tier to Opus 4.8 at its wall
 
-> **Tip:** on a long-running or headless loop, poll `session context --cwd <repo>` per
-> iteration to checkpoint before the context wall, and `session usage` to stop before a
-> rate wall resets.
+If your workflow dispatches sub-agents on a cheaper/faster model tier (Claude Code exposes
+per-model weekly walls — a promo tier like **Fable** is a common example), that tier has its
+**own** weekly cap, separate from the 5-hour and 7-day walls. When it's exhausted, a dispatch
+on that tier **dies instantly** (zero tool-uses, a clobbered "out of credits" message that
+looks like a crash).
+
+So make it a standing rule for your agents: **when a model tier's weekly wall is near-full
+(~90%), dispatch that tier's agents on Opus 4.8 instead** (pass `model: opus` on the agent
+call). It's a *model-switch*, not a stop-work signal — the work continues, just on a tier that
+still has headroom. The hook in section C surfaces exactly this the moment the scoped wall
+climbs.
+
+> **Tip:** on a long-running or headless loop, hooks only fire on prompt submit — so **poll
+> `session usage` yourself between steps** too. Check `session context --cwd <repo>` to
+> checkpoint before the context wall, and `session usage` to catch a rate wall (or a model-tier
+> wall) *before* it bites.
 
 ---
 
