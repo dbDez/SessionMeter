@@ -47,9 +47,23 @@ public static class ContextWindowResolver
     /// A <see cref="WindowResolution"/>: <c>Detected=true</c> with the matched window and model key on success;
     /// <c>WindowResolution(fallback, false, null)</c> when detection is not possible.
     /// </returns>
+    /// <remarks>
+    /// When <c>.claude.json</c> yields no per-project detection (a FRESH session has no <c>lastModelUsage</c>
+    /// yet — it is checkpoint-written), the fallback path consults a secondary signal before assuming the
+    /// standard window: the top-level <c>"model"</c> string in <c>&lt;userProfile&gt;\.claude\settings.json</c>
+    /// (the user's SELECTED model, e.g. <c>opus[1m]</c>, which carries the <c>[1m]</c> marker even before any
+    /// usage is recorded). A real <c>.claude.json</c> per-project detection always wins over this config signal.
+    /// </remarks>
     public static WindowResolution Resolve(string cwd, string? baseModel, string userProfile, long fallback)
     {
-        WindowResolution FallBack() => new(fallback, Detected: false, Model: null);
+        WindowResolution FallBack()
+        {
+            // Secondary signal: the selected model in ~/.claude/settings.json fills the fresh-session gap
+            // where .claude.json has no per-project usage recorded yet.
+            if (!string.IsNullOrWhiteSpace(userProfile) && TryConfigLargeWindow(userProfile, out string configModel))
+                return new WindowResolution(LargeWindow, Detected: true, Model: configModel);
+            return new(fallback, Detected: false, Model: null);
+        }
 
         if (string.IsNullOrWhiteSpace(cwd) || string.IsNullOrWhiteSpace(userProfile))
             return FallBack();
@@ -160,6 +174,45 @@ public static class ContextWindowResolver
         modelKey = bestKey;
         window = IsLarge(bestKey) ? LargeWindow : StandardWindow;
         return true;
+    }
+
+    /// <summary>
+    /// Reads the user's SELECTED model from <c>&lt;userProfile&gt;\.claude\settings.json</c> (top-level
+    /// <c>"model"</c> string) and reports whether it denotes the 1M-context beta (contains <c>[1m]</c>,
+    /// case-insensitive). Never throws — a missing file, parse failure, or shape surprise returns false.
+    /// </summary>
+    /// <param name="userProfile">The user-profile root that holds <c>.claude\settings.json</c>.</param>
+    /// <param name="model">The selected model string (e.g. <c>opus[1m]</c>) when this returns true.</param>
+    /// <returns>True only when a top-level <c>model</c> string exists and contains <c>[1m]</c>.</returns>
+    private static bool TryConfigLargeWindow(string userProfile, out string model)
+    {
+        model = string.Empty;
+
+        string path = Path.Combine(userProfile, ".claude", "settings.json");
+        if (!File.Exists(path))
+            return false;
+
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path));
+            JsonElement root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("model", out JsonElement modelEl) ||
+                modelEl.ValueKind != JsonValueKind.String)
+                return false;
+
+            string? selected = modelEl.GetString();
+            if (string.IsNullOrWhiteSpace(selected) ||
+                !selected.Contains("[1m]", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            model = selected;
+            return true;
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>True when a model key denotes the 1M-context beta (ends with <c>[1m]</c>, case-insensitive).</summary>
