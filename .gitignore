@@ -9,3 +9,6 @@ obj/
 dist/
 publish-*/
 *.user
+
+# Regenerable local development knowledge graph — never commit or push.
+graphify-out/
