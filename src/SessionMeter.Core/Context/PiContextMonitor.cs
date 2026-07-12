@@ -21,14 +21,14 @@ public sealed class PiContextMonitor
     }
 
     /// <summary>Reads the newest Pi session for <paramref name="cwd"/> under the current user's profile.</summary>
-    public ContextReading Read(string cwd, string? name = null)
-        => Read(cwd, name, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+    public ContextReading Read(string cwd, string? name = null, string? sessionId = null)
+        => Read(cwd, name, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), sessionId);
 
     /// <summary>
     /// Testable overload that resolves Pi's session and model-registry files under an explicit user-profile root.
     /// Missing or unexpected state returns an unknown reading rather than throwing.
     /// </summary>
-    public ContextReading Read(string cwd, string? name, string userProfile)
+    public ContextReading Read(string cwd, string? name, string userProfile, string? sessionId = null)
     {
         string label = string.IsNullOrWhiteSpace(name) ? Naming.Slug(cwd) : name!;
         long fallback = _cfg.WorkerContextWindow > 0 ? _cfg.WorkerContextWindow : ContextWindowResolver.StandardWindow;
@@ -37,9 +37,14 @@ public sealed class PiContextMonitor
             return Unknown(label, fallback, "no working directory given");
 
         string sessionsRoot = Path.Combine(userProfile, ".pi", "agent", "sessions");
-        PiTranscript? foundTranscript = FindActiveTranscript(sessionsRoot, cwd);
+        PiTranscript? foundTranscript = FindActiveTranscript(sessionsRoot, cwd, sessionId);
         if (foundTranscript is null)
-            return Unknown(label, fallback, $"no Pi session transcript for {cwd} (looked under {sessionsRoot})");
+        {
+            string selection = string.IsNullOrWhiteSpace(sessionId)
+                ? $"for {cwd}"
+                : $"with id {sessionId} for {cwd}";
+            return Unknown(label, fallback, $"no Pi session transcript {selection} (looked under {sessionsRoot})");
+        }
         PiTranscript transcript = foundTranscript.Value;
 
         PiUsageScan scan;
@@ -72,11 +77,12 @@ public sealed class PiContextMonitor
         => new(name, null, 0, window, 0, null, null, note);
 
     /// <summary>
-    /// Finds the most recently modified Pi transcript whose session-header <c>cwd</c> equals
-    /// <paramref name="cwd"/> after separator/case normalization. Header matching avoids relying on Pi's
-    /// implementation-specific session-directory encoding.
+    /// Finds a Pi transcript whose session-header <c>cwd</c> equals <paramref name="cwd"/> after
+    /// separator/case normalization. When <paramref name="sessionId"/> is supplied, selects that exact
+    /// Pi session header id; otherwise selects the most recently modified matching transcript. Header matching
+    /// avoids relying on Pi's implementation-specific session-directory encoding.
     /// </summary>
-    public static PiTranscript? FindActiveTranscript(string sessionsRoot, string cwd)
+    public static PiTranscript? FindActiveTranscript(string sessionsRoot, string cwd, string? sessionId = null)
     {
         if (string.IsNullOrWhiteSpace(sessionsRoot) || !Directory.Exists(sessionsRoot))
             return null;
@@ -101,14 +107,21 @@ public sealed class PiContextMonitor
                     !string.Equals(NormalizePath(sessionCwd.GetString()), wanted, StringComparison.Ordinal))
                     continue;
 
-                string sessionId = root.TryGetProperty("id", out JsonElement id) && id.ValueKind == JsonValueKind.String
+                string transcriptSessionId = root.TryGetProperty("id", out JsonElement id) && id.ValueKind == JsonValueKind.String
                     ? id.GetString() ?? Path.GetFileNameWithoutExtension(file.Name)
                     : Path.GetFileNameWithoutExtension(file.Name);
+
+                if (!string.IsNullOrWhiteSpace(sessionId) &&
+                    !string.Equals(sessionId, transcriptSessionId, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!string.IsNullOrWhiteSpace(sessionId))
+                    return new PiTranscript(file.FullName, transcriptSessionId);
 
                 if (file.LastWriteTimeUtc > newestWrite)
                 {
                     newestWrite = file.LastWriteTimeUtc;
-                    newest = new PiTranscript(file.FullName, sessionId);
+                    newest = new PiTranscript(file.FullName, transcriptSessionId);
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)

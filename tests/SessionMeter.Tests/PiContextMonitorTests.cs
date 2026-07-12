@@ -63,6 +63,51 @@ public sealed class PiContextMonitorTests
     }
 
     [Fact]
+    public void Read_with_explicit_session_id_ignores_a_newer_same_cwd_transcript()
+    {
+        const string cwd = @"C:\Dev\SessionMeter";
+        const string oldId = "11111111-1111-1111-1111-111111111111";
+        const string newId = "22222222-2222-2222-2222-222222222222";
+        string profile = Path.Combine(Path.GetTempPath(), "sm-pi-" + Guid.NewGuid().ToString("N"));
+        string sessions = Path.Combine(profile, ".pi", "agent", "sessions", "same-cwd");
+        Directory.CreateDirectory(sessions);
+        string oldTranscript = Path.Combine(sessions, "old.jsonl");
+        string newTranscript = Path.Combine(sessions, "new.jsonl");
+
+        File.WriteAllLines(oldTranscript,
+        [
+            $$$"""{"type":"session","id":"{{{oldId}}}","cwd":"C:/Dev/SessionMeter"}""",
+            """{"type":"message","message":{"role":"assistant","provider":"pav-foundry","model":"gpt-5.6-terra","usage":{"input":463942,"cacheRead":0,"cacheWrite":0}}}""",
+        ]);
+        File.WriteAllLines(newTranscript,
+        [
+            $$$"""{"type":"session","id":"{{{newId}}}","cwd":"C:/Dev/SessionMeter"}""",
+            """{"type":"message","message":{"role":"assistant","provider":"pav-foundry","model":"gpt-5.6-terra","usage":{"input":7200,"cacheRead":0,"cacheWrite":0}}}""",
+        ]);
+        File.SetLastWriteTimeUtc(newTranscript, DateTime.UtcNow.AddMinutes(1));
+
+        string agentDir = Path.Combine(profile, ".pi", "agent");
+        File.WriteAllText(Path.Combine(agentDir, "models.json"),
+            """{"providers":{"pav-foundry":{"models":[{"id":"gpt-5.6-terra","contextWindow":900000}]}}}""");
+
+        try
+        {
+            var monitor = new PiContextMonitor(new MeterConfig());
+            ContextReading newest = monitor.Read(cwd, name: null, userProfile: profile);
+            ContextReading exact = monitor.Read(cwd, name: null, userProfile: profile, sessionId: oldId);
+
+            Assert.Equal(newId, newest.SessionId);
+            Assert.Equal(0.8, newest.Pct);
+            Assert.Equal(oldId, exact.SessionId);
+            Assert.Equal(51.5, exact.Pct);
+        }
+        finally
+        {
+            Directory.Delete(profile, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Read_missing_model_registry_uses_configured_fallback()
     {
         const string cwd = @"C:\Dev\SessionMeter";

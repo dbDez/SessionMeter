@@ -141,6 +141,7 @@ int RunContext(string[] a)
 {
     MeterConfig cfg = new();
     string cwd = Directory.GetCurrentDirectory();
+    string? sessionId = null;
     bool pi = false;
 
     for (int i = 1; i < a.Length; i++)
@@ -151,19 +152,29 @@ int RunContext(string[] a)
             continue;
         }
 
-        if (a[i] is "--cwd")
+        if (a[i] is "--cwd" or "--session")
         {
             if (i + 1 >= a.Length)
             {
-                Console.Error.WriteLine("session context: --cwd requires a path.");
+                Console.Error.WriteLine($"session context: {a[i]} requires a value.");
                 return 2;
             }
-            cwd = a[++i];
+
+            if (a[i] == "--cwd")
+                cwd = a[++i];
+            else
+                sessionId = a[++i];
         }
     }
 
+    if (!pi && !string.IsNullOrWhiteSpace(sessionId))
+    {
+        Console.Error.WriteLine("session context: --session is supported only with --pi.");
+        return 2;
+    }
+
     ContextReading reading = pi
-        ? new PiContextMonitor(cfg).Read(cwd, name: null)
+        ? new PiContextMonitor(cfg).Read(cwd, name: null, sessionId)
         : new ContextMonitor(cfg).Read(cwd, name: null);
     Console.WriteLine(reading.ToLine());
     return 0;
@@ -177,10 +188,11 @@ static int PrintHelp()
 Session — accurate in-session context % + Claude Code usage windows (keyless)
 
 Usage:
-  session context [--pi] [--cwd <path>]
+  session context [--pi] [--cwd <path>] [--session <id>]
                                    Accurate context-window %, read from a local Claude Code transcript
                                    by default or a Pi transcript with --pi. No args = current directory;
-                                   --cwd reads any directory. Kills the guesswork native `/context` only
+                                   --cwd reads any directory. With --pi, --session pins the exact Pi
+                                   session ID instead of selecting the newest CWD transcript. Kills the guesswork native `/context` only
                                    shows interactively.
   session usage [--raw]            Live 5-hour + 7-day rate-limit windows from the OAuth usage endpoint.
                                    --raw also prints the exact JSON body the endpoint returned.
