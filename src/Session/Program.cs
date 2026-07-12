@@ -7,11 +7,11 @@ using SessionMeter.Core.Util;
 
 // Session — a tiny keyless consumer CLI. Dispatches on args[0]:
 //   usage    live-read the programmatic OAuth usage endpoint (5-hour + 7-day windows)
-//   context  accurate in-session context-window % from the local session transcript
+//   context  accurate in-session context-window % from a local Claude Code or Pi transcript
 //   help     concise help ( -h | --help | no args )
 //   version  the assembly's informational version ( --version )
 // Both features are keyless: `usage` uses the Claude Code OAuth token (NOT an Anthropic API key);
-// `context` reads the local session transcript and needs no login at all.
+// `context` reads a local transcript and needs no login at all.
 try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch (IOException) { /* redirected — ignore */ }
 
 string mode = args.Length > 0 ? args[0].Trim().ToLowerInvariant() : "help";
@@ -135,15 +135,22 @@ static void PrintUsageWindow(string label, WindowUsage? w)
 }
 
 // ── context: one-shot external context-% read of a session's transcript ──────────────────────────────
-// Keyless — reads the Claude Code session JSONL for a working directory (no login, no Anthropic key).
-// Default cwd is the current directory; `--cwd <path>` reads any directory.
+// Keyless — reads a local Claude Code or Pi session JSONL for a working directory.
+// Default cwd is the current directory; `--cwd <path>` reads any directory; `--pi` selects Pi.
 int RunContext(string[] a)
 {
     MeterConfig cfg = new();
     string cwd = Directory.GetCurrentDirectory();
+    bool pi = false;
 
     for (int i = 1; i < a.Length; i++)
     {
+        if (a[i] is "--pi")
+        {
+            pi = true;
+            continue;
+        }
+
         if (a[i] is "--cwd")
         {
             if (i + 1 >= a.Length)
@@ -155,7 +162,9 @@ int RunContext(string[] a)
         }
     }
 
-    ContextReading reading = new ContextMonitor(cfg).Read(cwd, name: null);
+    ContextReading reading = pi
+        ? new PiContextMonitor(cfg).Read(cwd, name: null)
+        : new ContextMonitor(cfg).Read(cwd, name: null);
     Console.WriteLine(reading.ToLine());
     return 0;
 }
@@ -165,22 +174,25 @@ static int PrintHelp()
 {
     Console.WriteLine(
 """
-Session — accurate in-session context % + live usage windows for Claude Code (keyless)
+Session — accurate in-session context % + Claude Code usage windows (keyless)
 
 Usage:
-  session context [--cwd <path>]   Accurate context-window %, read from the local Claude Code session
-                                   transcript. No args = current directory; --cwd reads any directory.
-                                   Kills the guesswork native `/context` only shows interactively.
+  session context [--pi] [--cwd <path>]
+                                   Accurate context-window %, read from a local Claude Code transcript
+                                   by default or a Pi transcript with --pi. No args = current directory;
+                                   --cwd reads any directory. Kills the guesswork native `/context` only
+                                   shows interactively.
   session usage [--raw]            Live 5-hour + 7-day rate-limit windows from the OAuth usage endpoint.
                                    --raw also prints the exact JSON body the endpoint returned.
   session help                     This help.
   session version                  Print the version.
 
-Keyless: `context` reads the local session transcript and needs NO login. `usage` needs a Claude
-subscription login (Pro/Max OAuth token) — API-key users get a friendly message and should use `context`.
+Keyless: `context` reads the local Claude Code or Pi session transcript and needs NO login. `usage` needs
+an Anthropic Claude subscription login (Pro/Max OAuth token) — API-key users get a friendly message and
+should use `context`.
 
 ⚠️  `session usage` reads the UNDOCUMENTED, unversioned GET /api/oauth/usage endpoint — it may change or
-    disappear without notice. `session context` depends only on the local transcript format.
+    disappear without notice. `session context` depends only on the local Claude Code or Pi transcript format.
 """);
     return 0;
 }
