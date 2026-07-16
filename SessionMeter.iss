@@ -3,7 +3,7 @@
 ; Self-contained: no .NET runtime detection needed. Per-user: no admin prompt.
 
 #define MyAppName        "SessionMeter"
-#define MyAppVersion     "0.4.3"
+#define MyAppVersion     "0.5.0"
 #define MyAppExeName     "Session.exe"
 #define MyAppPublisher   "Pieter Sadie"
 #define MyAppURL         "https://github.com/dbDez/SessionMeter"

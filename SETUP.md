@@ -1,11 +1,12 @@
 # SessionMeter — Setup, Build & Wiring Guide
 
 `Session.exe` (command: `session`) is a tiny, keyless CLI that reports your **exact
-in-session context %** for Claude Code and Pi, plus your **live rate-limit windows** for
+in-session context %** for Claude Code, Codex, and Pi, plus your **live rate-limit windows** for
 Claude Code — measured from the real session transcript, never estimated.
 
 - `session context` — needs **no login**. Reads the local Claude Code session transcript.
 - `session context --pi` — needs **no login**. Reads the local Pi session transcript and Pi model registry.
+- `session context --codex` — needs **no login**. Reads the local Codex rollout transcript.
 - `session usage` — needs a **Claude subscription (Pro/Max)** login (OAuth); an API key can't read the windows.
 
 This document covers: installing, wiring it into a Claude Code session, building the
@@ -229,7 +230,21 @@ that way.
 
 ---
 
-## 4. Build the installer from source
+## 4. Use it with Codex
+
+Codex records a `token_count` event in each rollout transcript, including the exact current input-token footprint
+and context-window size. Measure the active Codex session for a directory with:
+
+```powershell
+session context --codex --cwd C:\PKM
+```
+
+To inspect a particular Codex session instead of the newest matching transcript, add `--session <id>`.
+SessionMeter only reads `%USERPROFILE%\.codex\sessions\`; it never changes Codex configuration or transcripts.
+
+---
+
+## 5. Build the installer from source
 
 ### Prerequisites
 
@@ -262,7 +277,7 @@ To cut a new release: bump `<Version>` in `src/Session/Session.csproj`, then run
 
 ---
 
-## 5. How the PATH entry works
+## 6. How the PATH entry works
 
 The installer adds itself to the **per-user** PATH (`HKCU\Environment`), so no admin rights
 are needed. In `SessionMeter.iss`:
@@ -286,7 +301,7 @@ Because the binary is `Session.exe`, Windows' `PATHEXT` resolves the bare comman
 
 ---
 
-## 6. How the app icon is set
+## 7. How the app icon is set
 
 One `.ico` drives the exe, the installer, and Add/Remove Programs:
 
@@ -303,7 +318,7 @@ above, and rebuild — the exe and installer both pick up the new icon.
 
 ---
 
-## 7. Uninstall
+## 8. Uninstall
 
 Add/Remove Programs → **SessionMeter** → Uninstall. It removes the binary and strips the
 install dir from your PATH.

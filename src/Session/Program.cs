@@ -135,7 +135,7 @@ static void PrintUsageWindow(string label, WindowUsage? w)
 }
 
 // ── context: one-shot external context-% read of a session's transcript ──────────────────────────────
-// Keyless — reads a local Claude Code or Pi session JSONL for a working directory.
+// Keyless — reads a local Claude Code, Codex, or Pi session JSONL for a working directory.
 // Default cwd is the current directory; `--cwd <path>` reads any directory; `--pi` selects Pi.
 int RunContext(string[] a)
 {
@@ -143,12 +143,18 @@ int RunContext(string[] a)
     string cwd = Directory.GetCurrentDirectory();
     string? sessionId = null;
     bool pi = false;
+    bool codex = false;
 
     for (int i = 1; i < a.Length; i++)
     {
         if (a[i] is "--pi")
         {
             pi = true;
+            continue;
+        }
+        if (a[i] is "--codex")
+        {
+            codex = true;
             continue;
         }
 
@@ -167,15 +173,22 @@ int RunContext(string[] a)
         }
     }
 
-    if (!pi && !string.IsNullOrWhiteSpace(sessionId))
+    if (pi && codex)
     {
-        Console.Error.WriteLine("session context: --session is supported only with --pi.");
+        Console.Error.WriteLine("session context: choose either --pi or --codex.");
+        return 2;
+    }
+    if (!pi && !codex && !string.IsNullOrWhiteSpace(sessionId))
+    {
+        Console.Error.WriteLine("session context: --session is supported only with --pi or --codex.");
         return 2;
     }
 
     ContextReading reading = pi
         ? new PiContextMonitor(cfg).Read(cwd, name: null, sessionId)
-        : new ContextMonitor(cfg).Read(cwd, name: null);
+        : codex
+            ? new CodexContextMonitor(cfg).Read(cwd, name: null, sessionId)
+            : new ContextMonitor(cfg).Read(cwd, name: null);
     Console.WriteLine(reading.ToLine());
     return 0;
 }
@@ -188,10 +201,10 @@ static int PrintHelp()
 Session — accurate in-session context % + Claude Code usage windows (keyless)
 
 Usage:
-  session context [--pi] [--cwd <path>] [--session <id>]
+  session context [--pi|--codex] [--cwd <path>] [--session <id>]
                                    Accurate context-window %, read from a local Claude Code transcript
-                                   by default or a Pi transcript with --pi. No args = current directory;
-                                   --cwd reads any directory. With --pi, --session pins the exact Pi
+                                   by default, a Pi transcript with --pi, or a Codex transcript with --codex.
+                                   No args = current directory; --cwd reads any directory. With --pi or --codex, --session pins the exact
                                    session ID instead of selecting the newest CWD transcript. Kills the guesswork native `/context` only
                                    shows interactively.
   session usage [--raw]            Live 5-hour + 7-day rate-limit windows from the OAuth usage endpoint.
@@ -199,12 +212,12 @@ Usage:
   session help                     This help.
   session version                  Print the version.
 
-Keyless: `context` reads the local Claude Code or Pi session transcript and needs NO login. `usage` needs
+Keyless: `context` reads the local Claude Code, Codex, or Pi session transcript and needs NO login. `usage` needs
 an Anthropic Claude subscription login (Pro/Max OAuth token) — API-key users get a friendly message and
 should use `context`.
 
 ⚠️  `session usage` reads the UNDOCUMENTED, unversioned GET /api/oauth/usage endpoint — it may change or
-    disappear without notice. `session context` depends only on the local Claude Code or Pi transcript format.
+    disappear without notice. `session context` depends only on the local Claude Code, Codex, or Pi transcript format.
 """);
     return 0;
 }

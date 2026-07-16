@@ -1,6 +1,6 @@
 # Session — kill Claude Code's context guessing
 
-**Session.exe** is a tiny, keyless consumer CLI for Claude Code and Pi users. It gives you an **accurate
+**Session.exe** is a tiny, keyless consumer CLI for Claude Code, Codex, and Pi users. It gives you an **accurate
 in-session context-window %** (the number native `/context` only shows interactively) plus Claude Code's **live
 rate-limit windows** — without an Anthropic API key.
 
@@ -9,8 +9,8 @@ Two commands:
 ## `session context`
 
 Reads the local Claude Code session transcript for a working directory and reports exactly how full the
-context window is — the same input footprint the API counted, not a guess. Add `--pi` to read Pi's local
-session transcript instead. **Needs no login at all.**
+context window is — the same input footprint the API counted, not a guess. Add `--pi` or `--codex` to read
+Pi's or Codex's local session transcript instead. **Needs no login at all.**
 
 ```
 > session context
@@ -21,6 +21,8 @@ Options:
 
 - `--cwd <path>` — read a specific directory (default: the current directory).
 - `--pi` — read Pi's `~/.pi/agent/sessions/` JSONL files instead of Claude Code's `~/.claude/projects/` files.
+- `--codex` — read Codex's `~/.codex/sessions/` rollout JSONL files instead of Claude Code's transcript.
+- `--session <id>` — with `--pi` or `--codex`, pin one exact session instead of selecting the newest matching CWD.
 
 ### Context-window detection
 
@@ -43,6 +45,11 @@ The suffix is one of ` · 1M window (detected)`, ` · 200K window (detected)`, o
 For Pi, `session context --pi` reads the active provider/model from Pi's latest assistant message and resolves the
 window from `%USERPROFILE%\.pi\agent\models.json`. This supports PAV GPT windows such as `900,000` for
 `gpt-5.6-terra`, `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-5.5`, and `gpt-5.4`.
+
+For Codex, `session context --codex` reads the newest rollout transcript with a matching `session_meta.cwd`.
+Its latest `token_count` event records the current `last_token_usage.input_tokens` and exact
+`model_context_window`, so SessionMeter does not guess the limit. `cached_input_tokens` is already part of
+Codex input accounting and is not double-counted.
 
 > ⚠️ **Undocumented state.** `.claude.json` is **undocumented, internal Claude Code state** (the same caveat
 > class as the OAuth usage endpoint below) — its shape may change without notice. Detection parses it
@@ -94,7 +101,8 @@ Session is **extracted from [MO (Master Orchestrator)](https://github.com/) — 
 usage + context logic was lifted into a dependency-light shared core (`SessionMeter.Core`) with no
 dependency on MO's config, hosting, logging, or the Anthropic SDK. It reads the Claude Code OAuth token from
 `~/.claude/.credentials.json` (`claudeAiOauth.accessToken`) for `usage`; Claude Code transcript JSONL under
-`~/.claude/projects/` for `context`; and Pi transcript JSONL under `~/.pi/agent/sessions/` for `context --pi`.
+`~/.claude/projects/` for `context`; Pi transcript JSONL under `~/.pi/agent/sessions/` for `context --pi`; and
+Codex rollout JSONL under `~/.codex/sessions/` for `context --codex`.
 
 **Future convergence:** MO may later reference `SessionMeter.Core` directly so the two tools share exactly
 one usage/context implementation and never diverge.
