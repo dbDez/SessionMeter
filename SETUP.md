@@ -220,13 +220,11 @@ Pi has no Claude-style hooks, but the command works directly from any shell and 
 or footer/status integration:
 
 ```powershell
-session context --pi --cwd C:\Users\pieters
+session context --pi --cwd "C:/Work/ExampleProject"
 ```
 
 It reads `%USERPROFILE%\.pi\agent\sessions\` for the newest matching session header and uses
-`%USERPROFILE%\.pi\agent\models.json` to resolve the active provider/model context window. For PAV GPT-5.6
-Terra/Sol/Luna, GPT-5.5, and GPT-5.4 this currently resolves to `900000` when Pi's model registry is configured
-that way.
+`%USERPROFILE%\.pi\agent\models.json` to resolve the active provider/model context window. Custom-provider models can use windows such as `900000` when Pi's model registry declares that value.
 
 ---
 
@@ -236,7 +234,7 @@ Codex records a `token_count` event in each rollout transcript, including the ex
 and context-window size. Measure the active Codex session for a directory with:
 
 ```powershell
-session context --codex --cwd C:\PKM
+session context --codex --cwd "C:/Work/ExampleProject"
 ```
 
 To inspect a particular Codex session instead of the newest matching transcript, add `--session <id>`.

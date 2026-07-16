@@ -26,7 +26,7 @@ public sealed class CodexContextMonitorTests
     [Fact]
     public void Read_selects_newest_matching_cwd_and_uses_exact_recorded_window()
     {
-        const string cwd = @"C:\PKM";
+        const string cwd = @"C:\Work\ExampleProject";
         const string oldId = "old-session";
         const string newId = "new-session";
         string profile = Path.Combine(Path.GetTempPath(), "sm-codex-" + Guid.NewGuid().ToString("N"));
@@ -36,12 +36,12 @@ public sealed class CodexContextMonitorTests
         string newTranscript = Path.Combine(sessions, "rollout-new.jsonl");
         File.WriteAllLines(oldTranscript,
         [
-            $$$"""{"type":"session_meta","payload":{"session_id":"{{{oldId}}}","cwd":"C:\\PKM"}}""",
+            $$$"""{"type":"session_meta","payload":{"session_id":"{{{oldId}}}","cwd":"C:\\Work\\ExampleProject"}}""",
             """{"timestamp":"2026-07-14T07:50:00Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":450000},"model_context_window":900000}}}""",
         ]);
         File.WriteAllLines(newTranscript,
         [
-            $$$"""{"type":"session_meta","payload":{"session_id":"{{{newId}}}","cwd":"C:/PKM"}}""",
+            $$$"""{"type":"session_meta","payload":{"session_id":"{{{newId}}}","cwd":"C:/Work/ExampleProject"}}""",
             """{"timestamp":"2026-07-14T07:56:00Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":32965,"cached_input_tokens":21760},"model_context_window":353400}}}""",
         ]);
         File.SetLastWriteTimeUtc(newTranscript, DateTime.UtcNow.AddMinutes(1));
@@ -49,7 +49,7 @@ public sealed class CodexContextMonitorTests
         try
         {
             var monitor = new CodexContextMonitor(new MeterConfig());
-            ContextReading newest = monitor.Read(cwd, name: "pkm", userProfile: profile);
+            ContextReading newest = monitor.Read(cwd, name: "example", userProfile: profile);
             ContextReading exact = monitor.Read(cwd, name: null, userProfile: profile, sessionId: oldId);
 
             Assert.True(newest.Known);

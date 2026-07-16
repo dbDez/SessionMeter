@@ -10,5 +10,12 @@ dist/
 publish-*/
 *.user
 
+# Session continuity and local agent state — never publish.
+ToDo.md
+TasksToComplete.md
+*.env
+*.env.*
+*.secrets.json
+
 # Regenerable local development knowledge graph — never commit or push.
 graphify-out/

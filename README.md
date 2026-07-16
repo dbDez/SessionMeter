@@ -43,8 +43,7 @@ The suffix is one of ` · 1M window (detected)`, ` · 200K window (detected)`, o
 (the fallback when no per-project model state is found).
 
 For Pi, `session context --pi` reads the active provider/model from Pi's latest assistant message and resolves the
-window from `%USERPROFILE%\.pi\agent\models.json`. This supports PAV GPT windows such as `900,000` for
-`gpt-5.6-terra`, `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-5.5`, and `gpt-5.4`.
+window from `%USERPROFILE%\.pi\agent\models.json`. This supports custom-provider model windows such as `900,000` when they are declared in Pi's model registry.
 
 For Codex, `session context --codex` reads the newest rollout transcript with a matching `session_meta.cwd`.
 Its latest `token_count` event records the current `last_token_usage.input_tokens` and exact
