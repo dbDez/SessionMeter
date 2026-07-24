@@ -46,95 +46,12 @@ public sealed class OAuthUsageSourceTests
     }
 
     [Fact]
-    public void ParseSnapshot_fable_wall_is_retired_and_never_binds()
+    public void ParseSnapshot_binding_limit_is_max_percent_including_per_model()
     {
-        // The Fable per-model wall no longer exists Anthropic-side (2026-07-24). Even at 100% the
-        // fable-scoped bucket must not win the binding computation — the enforced 7-day (39%) binds.
         UsageSnapshot snap = OAuthUsageSource.ParseSnapshot(BodyWithPerModelWall);
 
-        Assert.Equal(39, snap.BindingLimit!.Percent);
-        Assert.Equal("7-day", snap.BindingLabel);
-        Assert.DoesNotContain("Fable", snap.BindingLabel);
-    }
-
-    [Fact]
-    public void ParseSnapshot_fable_wall_never_binds_even_when_endpoint_flags_it_active_critical()
-    {
-        const string body =
-            """
-            {
-              "five_hour": { "utilization": 6, "resets_at": "2026-07-24T16:10:00Z" },
-              "seven_day": { "utilization": 19, "resets_at": "2026-07-30T19:00:00Z" },
-              "limits": [
-                { "kind": "session", "group": "session", "percent": 6 },
-                { "kind": "weekly_all", "group": "weekly", "percent": 19 },
-                { "kind": "weekly_scoped", "group": "weekly", "percent": 100,
-                  "severity": "critical", "is_active": true,
-                  "scope": { "model": { "display_name": "Fable" } } }
-              ]
-            }
-            """;
-
-        UsageSnapshot snap = OAuthUsageSource.ParseSnapshot(body);
-
-        Assert.Equal(19, snap.BindingLimit!.Percent);       // enforced 7-day wins, not the 100% fable bucket
-        Assert.Equal("7-day", snap.BindingLabel);
-        Assert.Empty(snap.ActivePerModelWalls);             // an active/critical fable bucket is NOT an active wall
-
-        UsageLimit fable = snap.ModelLimits.Single(l => l.ModelName == "Fable");
-        Assert.True(fable.IsFableScoped);
-        Assert.False(fable.IsEnforced);                     // the data stays visible, but only informationally
-    }
-
-    [Fact]
-    public void ParseSnapshot_non_fable_per_model_wall_keeps_enforced_binding_semantics()
-    {
-        // The exclusion is scoped to fable ONLY: if the API ever ships another per-model wall, it still
-        // participates in (and here wins) the binding computation exactly as before.
-        const string body =
-            """
-            {
-              "five_hour": { "utilization": 6, "resets_at": "2026-07-24T16:10:00Z" },
-              "seven_day": { "utilization": 19, "resets_at": "2026-07-30T19:00:00Z" },
-              "limits": [
-                { "kind": "session", "group": "session", "percent": 6 },
-                { "kind": "weekly_all", "group": "weekly", "percent": 19 },
-                { "kind": "weekly_scoped", "group": "weekly", "percent": 97,
-                  "scope": { "model": { "display_name": "Haiku" } } }
-              ]
-            }
-            """;
-
-        UsageSnapshot snap = OAuthUsageSource.ParseSnapshot(body);
-
-        UsageLimit haiku = snap.ModelLimits.Single(l => l.ModelName == "Haiku");
-        Assert.False(haiku.IsFableScoped);
-        Assert.True(haiku.IsEnforced);
-        Assert.Equal(97, snap.BindingLimit!.Percent);
-        Assert.Contains("Haiku", snap.BindingLabel);
-    }
-
-    [Fact]
-    public void ParseSnapshot_binding_between_enforced_windows_is_unchanged()
-    {
-        // No fable bucket present: the binding selection between the 5-hour and 7-day windows is exactly
-        // the historical max-percent collapse.
-        const string body =
-            """
-            {
-              "five_hour": { "utilization": 82, "resets_at": "2026-07-24T16:10:00Z" },
-              "seven_day": { "utilization": 19, "resets_at": "2026-07-30T19:00:00Z" },
-              "limits": [
-                { "kind": "session", "group": "session", "percent": 82 },
-                { "kind": "weekly_all", "group": "weekly", "percent": 19 }
-              ]
-            }
-            """;
-
-        UsageSnapshot snap = OAuthUsageSource.ParseSnapshot(body);
-
-        Assert.Equal(82, snap.BindingLimit!.Percent);
-        Assert.Equal("5-hour session", snap.BindingLabel);
+        Assert.Equal(100, snap.BindingLimit!.Percent);
+        Assert.Contains("Fable", snap.BindingLabel);
     }
 
     [Fact]

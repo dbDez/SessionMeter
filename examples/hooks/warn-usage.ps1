@@ -5,8 +5,6 @@
 #   * per-model (scoped) wall — a cheaper/faster model tier's own weekly cap. At ~90% it's a
 #       MODEL-SWITCH signal: dispatch that tier's agents on Opus 4.8, because a dispatch on an
 #       exhausted tier fails instantly (0 tool-uses, clobbered message). NOT a stop-work signal.
-#       EXCEPTION: the Fable tier's wall was retired by Anthropic (2026-07) — the endpoint may
-#       still return a fable-scoped bucket, but it is informational only and is skipped below.
 # Requires `session` on PATH + a Claude subscription login (usage needs OAuth). Fail-open.
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -25,9 +23,8 @@ try {
     if     ($seven -ge 95) { $msgs += "7-day wall at $seven% — checkpoint (HandOff.md + commit) and pace remaining runs." }
     elseif ($seven -ge 90) { $msgs += "7-day wall at $seven% — approaching the weekly cap." }
 
-    # Per-model (scoped) walls live in limits[] as kind 'weekly_scoped'. Fable-scoped buckets are
-    # skipped: that wall no longer exists (informational only) and must never trigger a model switch.
-    foreach ($lim in @($u.limits | Where-Object { $_.kind -eq 'weekly_scoped' -and $_.scope.model.display_name -notmatch 'fable' })) {
+    # Per-model (scoped) walls live in limits[] as kind 'weekly_scoped'.
+    foreach ($lim in @($u.limits | Where-Object { $_.kind -eq 'weekly_scoped' })) {
         if ([int]$lim.percent -ge 90) {
             $model = $lim.scope.model.display_name
             $msgs += "The '$model' model tier is at $($lim.percent)% of its weekly wall — dispatch any agents on the '$model' tier with Opus 4.8 (model: opus) instead. A dispatch on an exhausted tier fails instantly. This is a model-switch, not a stop."

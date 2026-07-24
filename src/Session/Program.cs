@@ -99,8 +99,7 @@ static void PrintUsageSnapshot(UsageSnapshot snap)
     PrintUsageWindow("7-day window  ", snap.SevenDay);
 
     // Per-model / any additional walls the endpoint reports. The two above are the all-models windows;
-    // entries here beyond those (e.g. a per-model weekly) are what the top-level fields miss. The retired
-    // Fable-scoped bucket renders as an explicitly informational line (never ACTIVE, never binding).
+    // entries here beyond those (e.g. a per-model Fable weekly) are what the top-level fields miss.
     var extra = snap.ModelLimits
         .Where(l => l.ModelName is { Length: > 0 } || l.Kind is not ("session" or "weekly_all"))
         .ToList();
@@ -108,7 +107,14 @@ static void PrintUsageSnapshot(UsageSnapshot snap)
     {
         Console.WriteLine("  ── per-model / scoped walls ──");
         foreach (UsageLimit l in extra)
-            Console.WriteLine(UsageMessages.ScopedWallLine(l));
+        {
+            string reset = l.ResetsAt is { } r
+                ? $"resets {LocalClock.FormatResetLocal(r)} · {r:u}"
+                : "reset time not reported";
+            string flags = l.IsActive ? " · ACTIVE" : "";
+            string sev = string.Equals(l.Severity, "normal", StringComparison.OrdinalIgnoreCase) ? "" : $" · {l.Severity}";
+            Console.WriteLine($"  {l.Label,-16}: {l.Percent,3}% used · {reset}{sev}{flags}");
+        }
     }
 
     UsageLimit? b = snap.BindingLimit;
@@ -266,24 +272,4 @@ It looks like you're using an API key (or aren't signed in to Claude Code).
   • `session context` works for you regardless — it reads the local session
     transcript and needs no login.
 """;
-
-    /// <summary>
-    /// Renders one per-model / scoped wall line for <c>session usage</c>. An ENFORCED wall keeps the
-    /// severity + ACTIVE flags; the RETIRED Fable-scoped bucket (<see cref="UsageLimit.IsFableScoped"/>)
-    /// instead gets an explicit "informational — no longer enforced" suffix and NEVER shows severity or
-    /// ACTIVE — Anthropic removed the Fable per-model wall (2026-07-24), so the number stays visible but
-    /// can never read as an enforceable constraint.
-    /// </summary>
-    /// <param name="l">The scoped/per-model window to render.</param>
-    public static string ScopedWallLine(UsageLimit l)
-    {
-        string reset = l.ResetsAt is { } r
-            ? $"resets {LocalClock.FormatResetLocal(r)} · {r:u}"
-            : "reset time not reported";
-        if (!l.IsEnforced)
-            return $"  {l.Label,-16}: {l.Percent,3}% used · {reset} · informational — no longer enforced";
-        string flags = l.IsActive ? " · ACTIVE" : "";
-        string sev = string.Equals(l.Severity, "normal", StringComparison.OrdinalIgnoreCase) ? "" : $" · {l.Severity}";
-        return $"  {l.Label,-16}: {l.Percent,3}% used · {reset}{sev}{flags}";
-    }
 }

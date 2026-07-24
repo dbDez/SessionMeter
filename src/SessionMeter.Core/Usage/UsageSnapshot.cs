@@ -7,12 +7,10 @@ namespace SessionMeter.Core.Usage;
 /// <para>
 /// TWO distinct binding notions (the display/control decoupling): a FLEET-wide usage-wall decision consumes
 /// <see cref="ToReading"/>, which binds ONLY on the ALL-MODELS windows (<see cref="FleetWindows"/> — 5-hour
-/// session + 7-day weekly-all); a per-model wall is DELIBERATELY EXCLUDED so it can never checkpoint a
-/// fleet of Opus workers. The DISPLAY surfaces (<c>session usage</c>) instead print EVERY window and use
-/// <see cref="BindingLimit"/>/<see cref="BindingLabel"/> (which DO consider ENFORCED per-model walls) so the
-/// operator still SEES the full picture. Display ≠ control. The RETIRED Fable-scoped wall
-/// (<see cref="UsageLimit.IsFableScoped"/> — Anthropic removed its enforcement 2026-07-24) is excluded from
-/// BOTH binding notions: it is printed as an informational line only and can never bind or read ACTIVE.
+/// session + 7-day weekly-all); a per-model wall (e.g. Fable at 100%) is DELIBERATELY EXCLUDED so it can
+/// never checkpoint a fleet of Opus workers. The DISPLAY surfaces (<c>session usage</c>) instead print EVERY
+/// window and use <see cref="BindingLimit"/>/<see cref="BindingLabel"/> (which DO consider per-model walls)
+/// so the operator still SEES the overall Fable / 5-hour / 7-day picture. Display ≠ control.
 /// </para>
 /// </summary>
 /// <param name="FiveHour">The rolling 5-hour session window, or null if absent/unparsed.</param>
@@ -54,12 +52,9 @@ public sealed record UsageSnapshot(
 
     /// <summary>
     /// The binding window as a named limit — the one with the HIGHEST <see cref="UsageLimit.Percent"/> across
-    /// the ENFORCED windows of <see cref="AllWindows"/> (an enforced per-model wall at 100% therefore binds
-    /// even when the all-models windows read low). The retired Fable-scoped wall
-    /// (<see cref="UsageLimit.IsFableScoped"/>) is EXCLUDED — Anthropic no longer enforces it (2026-07-24),
-    /// so a fable bucket in the payload must never be reported as the binding constraint. On a tie the
-    /// earlier window wins (5-hour before weekly, matching the historical collapse). Null when no enforced
-    /// window data is present.
+    /// <see cref="AllWindows"/> (a per-model Fable wall at 100% therefore binds even when the all-models
+    /// windows read low). On a tie the earlier window wins (5-hour before weekly, matching the historical
+    /// collapse). Null when no window data is present.
     /// </summary>
     public UsageLimit? BindingLimit
     {
@@ -67,7 +62,7 @@ public sealed record UsageSnapshot(
         {
             UsageLimit? best = null;
             foreach (UsageLimit w in AllWindows)
-                if (w.IsEnforced && (best is null || w.Percent > best.Percent))
+                if (best is null || w.Percent > best.Percent)
                     best = w;
             return best;
         }
@@ -126,14 +121,12 @@ public sealed record UsageSnapshot(
     }
 
     /// <summary>
-    /// The critical, currently-active ENFORCED per-model walls (<see cref="UsageLimit.IsPerModel"/> AND
+    /// The critical, currently-active per-model walls (<see cref="UsageLimit.IsPerModel"/> AND
     /// <see cref="UsageLimit.IsActive"/> AND severity <c>critical</c>) — the seam where a supervisor could
-    /// react to one of these (advisory only). The retired Fable-scoped wall is excluded even when the
-    /// endpoint still flags it active/critical: it is not an enforceable constraint and must never surface
-    /// as one. Empty when none is active.
+    /// react to one of these (advisory only). Empty when none is active.
     /// </summary>
     public IReadOnlyList<UsageLimit> ActivePerModelWalls =>
-        AllWindows.Where(w => w.IsPerModel && w.IsEnforced && w.IsActive
+        AllWindows.Where(w => w.IsPerModel && w.IsActive
             && string.Equals(w.Severity, "critical", StringComparison.OrdinalIgnoreCase)).ToList();
 
     /// <summary>
