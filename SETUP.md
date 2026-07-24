@@ -136,17 +136,23 @@ Point Claude Code at whichever hooks you want in `settings.json`
 
 ### Auto-switch a cheaper model tier to Opus 4.8 at its wall
 
-If your workflow dispatches sub-agents on a cheaper/faster model tier (Claude Code exposes
-per-model weekly walls — a promo tier like **Fable** is a common example), that tier has its
-**own** weekly cap, separate from the 5-hour and 7-day walls. When it's exhausted, a dispatch
-on that tier **dies instantly** (zero tool-uses, a clobbered "out of credits" message that
-looks like a crash).
+If your workflow dispatches sub-agents on a cheaper/faster model tier, Claude Code can expose
+**per-model weekly walls**: a tier with its **own** weekly cap, separate from the 5-hour and
+7-day walls. When such a wall is exhausted, a dispatch on that tier **dies instantly** (zero
+tool-uses, a clobbered "out of credits" message that looks like a crash).
 
-So make it a standing rule for your agents: **when a model tier's weekly wall is near-full
-(~90%), dispatch that tier's agents on Opus 4.8 instead** (pass `model: opus` on the agent
-call). It's a *model-switch*, not a stop-work signal — the work continues, just on a tier that
-still has headroom. The hook in section C surfaces exactly this the moment the scoped wall
-climbs.
+So make it a standing rule for your agents: **when an enforced model tier's weekly wall is
+near-full (~90%), dispatch that tier's agents on Opus 4.8 instead** (pass `model: opus` on the
+agent call). It's a *model-switch*, not a stop-work signal — the work continues, just on a tier
+that still has headroom. The hook in section C surfaces exactly this the moment an enforced
+scoped wall climbs.
+
+> **Retired: the Fable wall.** The **Fable** promo tier used to be the common example of a
+> per-model weekly wall, but Anthropic removed its enforcement (2026-07). The usage endpoint
+> may still return a fable-scoped bucket; `session usage` now prints it as an explicitly
+> **informational** line ("informational — no longer enforced") and **never** lets it become
+> the binding window or show as ACTIVE. Any *other* per-model wall the endpoint reports keeps
+> full enforced semantics, and the auto-switch rule above still applies to it.
 
 > **Tip:** on a long-running or headless loop, hooks only fire on prompt submit — so **poll
 > `session usage` yourself between steps** too. Check `session context --cwd <repo>` to
