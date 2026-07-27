@@ -65,6 +65,15 @@ public sealed record ContextReading(
     {
         string size = WindowTokens == 1_000_000 ? "1M" : WindowTokens == 200_000 ? "200K" : $"{WindowTokens:N0}";
         string source = WindowDetected ? "detected" : "assumed";
+
+        // A reading at or past 100% is far more likely a WRONG DENOMINATOR than a genuinely exhausted window:
+        // Claude compacts before a session can actually overrun, so "100.0% (335,065 / 200,000)" is arithmetic
+        // announcing its own impossibility — used tokens exceeded the window it was measured against. Say so
+        // instead of reporting it as a usage figure. On 2026-07-27 a 1M session read exactly that for hours and
+        // nothing flagged it; the number was believed and would have fired spurious Rule 3 checkpoints.
+        if (UsedTokens > WindowTokens)
+            return $" · {size} window ({source}) · ⚠ USED EXCEEDS WINDOW — window detection is wrong, treat this % as unreliable";
+
         return $" · {size} window ({source})";
     }
 }

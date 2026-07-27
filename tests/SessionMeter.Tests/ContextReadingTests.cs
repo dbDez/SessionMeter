@@ -29,6 +29,46 @@ public sealed class ContextReadingTests
     }
 
     [Fact]
+    public void ToLine_flags_used_exceeding_window_as_unreliable()
+    {
+        // Guard for the 2026-07-27 defect: a 1M session measured against a 200K window rendered
+        // "100.0% (335,065 / 200,000)" for hours and nothing said the denominator was impossible.
+        var reading = new ContextReading(
+            Name: "pkm",
+            SessionId: "5d5225e1",
+            UsedTokens: 335_065,
+            WindowTokens: 200_000,
+            Pct: 100.0,
+            AsOf: DateTimeOffset.UtcNow,
+            TranscriptPath: @"C:\x\y.jsonl",
+            WindowDetected: true);
+
+        string line = reading.ToLine();
+
+        Assert.Contains("USED EXCEEDS WINDOW", line);
+        Assert.Contains("unreliable", line);
+    }
+
+    [Fact]
+    public void ToLine_does_not_flag_a_reading_within_its_window()
+    {
+        var reading = new ContextReading(
+            Name: "pkm",
+            SessionId: "5d5225e1",
+            UsedTokens: 342_338,
+            WindowTokens: 1_000_000,
+            Pct: 34.2,
+            AsOf: DateTimeOffset.UtcNow,
+            TranscriptPath: @"C:\x\y.jsonl",
+            WindowDetected: true);
+
+        string line = reading.ToLine();
+
+        Assert.DoesNotContain("USED EXCEEDS WINDOW", line);
+        Assert.Contains("· 1M window (detected)", line);
+    }
+
+    [Fact]
     public void ToLine_appends_1M_detected_suffix_when_window_detected_at_one_million()
     {
         var reading = new ContextReading(
