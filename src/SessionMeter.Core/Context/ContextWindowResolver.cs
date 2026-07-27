@@ -52,7 +52,14 @@ public static class ContextWindowResolver
     /// yet — it is checkpoint-written), the fallback path consults a secondary signal before assuming the
     /// standard window: the top-level <c>"model"</c> string in <c>&lt;userProfile&gt;\.claude\settings.json</c>
     /// (the user's SELECTED model, e.g. <c>opus[1m]</c>, which carries the <c>[1m]</c> marker even before any
-    /// usage is recorded). A real <c>.claude.json</c> per-project detection always wins over this config signal.
+    /// usage is recorded).
+    /// </para>
+    /// <para>
+    /// Precedence is by STRENGTH OF EVIDENCE, not by source: (1) a cwd key spelling whose
+    /// <c>lastModelUsage</c> actually records the transcript's model; (2) the explicitly selected model in
+    /// <c>settings.json</c>; (3) the highest-cumulative-usage key in the first usable map. (2) outranks (3)
+    /// because <c>lastModelUsage</c> is cumulative history for a directory whereas <c>settings.json</c> states
+    /// what this session runs — a guess must never pre-empt a stated fact.
     /// </remarks>
     public static WindowResolution Resolve(string cwd, string? baseModel, string userProfile, long fallback)
     {
@@ -92,22 +99,49 @@ public static class ContextWindowResolver
 
             string wantCwd = Normalize(cwd);
 
-            // The same cwd can appear under many key spellings; take the FIRST whose lastModelUsage is usable.
+            // The same cwd appears under many key spellings, and their lastModelUsage maps DISAGREE — one can be
+            // stale while another holds the live model. Taking the first usable map is therefore wrong: on
+            // 2026-07-27 "C:/pkm" listed only Haiku + Sonnet 5 while the actual session model was recorded as
+            // claude-opus-5[1m] under "C:\PKM", so a 1M session was measured against a 200K window and 278,521
+            // tokens rendered as "100.0%" instead of ~28%.
+            //
+            // Two passes, authoritative first:
+            //   1. a spelling whose map actually CONTAINS the transcript's model (exact or [1m]) — real evidence;
+            //   2. only if none does, the legacy highest-cumulative-usage guess from the first usable map.
+            // Ordering by evidence rather than by key order makes the result independent of .claude.json's
+            // arbitrary property order, which is not a contract we control.
+            if (!string.IsNullOrWhiteSpace(baseModel))
+            {
+                foreach (JsonProperty project in projects.EnumerateObject())
+                {
+                    if (!TryGetUsage(project, wantCwd, out JsonElement usage))
+                        continue;
+
+                    if (TryChooseModel(usage, baseModel, requireBaseModel: true, out string modelKey, out long window))
+                        return new WindowResolution(window, Detected: true, Model: modelKey);
+                }
+            }
+
+            // 2. The user's EXPLICIT selection outranks a usage-ranked guess. lastModelUsage is cumulative
+            //    HISTORY for a directory; settings.json "model" is what this session was actually started on.
+            //    Observed 2026-07-27 on C:\PKM: no spelling recorded claude-opus-5 at all (the model was new and
+            //    lastModelUsage is checkpoint-written), while settings.json already said "opus[1m]". The stale
+            //    map still answered first with sonnet-5 ⇒ 200K, so this signal was never consulted and a 1M
+            //    session read 100% full. A guess must never pre-empt a stated fact.
+            if (TryConfigLargeWindow(userProfile, out string selectedModel))
+                return new WindowResolution(LargeWindow, Detected: true, Model: selectedModel);
+
+            // 3. Weakest evidence: the highest-cumulative-usage key in the first usable map for this cwd.
             foreach (JsonProperty project in projects.EnumerateObject())
             {
-                if (!string.Equals(Normalize(project.Name), wantCwd, StringComparison.Ordinal))
+                if (!TryGetUsage(project, wantCwd, out JsonElement usage))
                     continue;
 
-                if (project.Value.ValueKind != JsonValueKind.Object ||
-                    !project.Value.TryGetProperty("lastModelUsage", out JsonElement usage) ||
-                    usage.ValueKind != JsonValueKind.Object)
-                    continue;
-
-                if (TryChooseModel(usage, baseModel, out string modelKey, out long window))
+                if (TryChooseModel(usage, baseModel, requireBaseModel: false, out string modelKey, out long window))
                     return new WindowResolution(window, Detected: true, Model: modelKey);
             }
 
-            return FallBack();
+            return new WindowResolution(fallback, Detected: false, Model: null);
         }
     }
 
@@ -122,12 +156,36 @@ public static class ContextWindowResolver
         => Resolve(cwd, baseModel, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), StandardWindow);
 
     /// <summary>
+    /// Returns true when <paramref name="project"/> is a spelling of <paramref name="wantCwd"/> carrying a
+    /// usable (object-shaped) <c>lastModelUsage</c>, yielding it in <paramref name="usage"/>.
+    /// </summary>
+    private static bool TryGetUsage(JsonProperty project, string wantCwd, out JsonElement usage)
+    {
+        usage = default;
+
+        if (!string.Equals(Normalize(project.Name), wantCwd, StringComparison.Ordinal))
+            return false;
+
+        if (project.Value.ValueKind != JsonValueKind.Object ||
+            !project.Value.TryGetProperty("lastModelUsage", out usage) ||
+            usage.ValueKind != JsonValueKind.Object)
+            return false;
+
+        return true;
+    }
+
+    /// <summary>
     /// Chooses the active model key inside a non-empty <c>lastModelUsage</c> object and maps it to a window.
     /// When <paramref name="baseModel"/> is supplied, prefers the <c>&lt;baseModel&gt;[1m]</c> key (⇒ 1M) then
     /// the exact <c>&lt;baseModel&gt;</c> key (⇒ 200K), case-insensitively; otherwise (or when neither key is
     /// present) picks the key with the highest cumulative token usage and detects by its <c>[1m]</c> suffix.
     /// </summary>
-    private static bool TryChooseModel(JsonElement usage, string? baseModel, out string modelKey, out long window)
+    /// <param name="requireBaseModel">
+    /// When true, succeeds ONLY on a real <paramref name="baseModel"/> match and never falls back to the
+    /// usage-ranked guess. This is what lets <see cref="Resolve"/> prefer a key spelling that actually records
+    /// the live model over one that merely happens to be listed first (see the two-pass note in Resolve).
+    /// </param>
+    private static bool TryChooseModel(JsonElement usage, string? baseModel, bool requireBaseModel, out string modelKey, out long window)
     {
         modelKey = string.Empty;
         window = StandardWindow;
@@ -154,6 +212,11 @@ public static class ContextWindowResolver
                 }
             }
         }
+
+        // Authoritative pass: this map does not record the live model, so it is not evidence about the window.
+        // Report no-match and let Resolve try the next key spelling rather than guessing from unrelated models.
+        if (requireBaseModel)
+            return false;
 
         // No baseModel, or its keys are absent: pick the highest-usage model and detect by suffix.
         string? bestKey = null;

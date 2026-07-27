@@ -58,6 +58,113 @@ public sealed class ContextWindowResolverTests
         finally { Directory.Delete(profile, recursive: true); }
     }
 
+    private static string WriteClaudeJsonWithSelectedModel(string projectsBody, string selectedModel)
+    {
+        string profile = WriteClaudeJson(projectsBody);
+        string dir = Path.Combine(profile, ".claude");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "settings.json"), $$"""{ "model": "{{selectedModel}}" }""");
+        return profile;
+    }
+
+    [Fact]
+    public void Selected_model_outranks_a_stale_usage_ranked_guess()
+    {
+        // The exact live shape on C:\PKM, 2026-07-27. NO spelling of the cwd records the session's model
+        // (claude-opus-5 was new and lastModelUsage is checkpoint-written), but settings.json already said
+        // "opus[1m]". The stale map answered first with sonnet-5 ⇒ 200K, so a 1M session read 100% full.
+        string profile = WriteClaudeJsonWithSelectedModel(
+            """
+            "C:/pkm": { "lastModelUsage": {
+                "claude-haiku-4-5-20251001": { "inputTokens": 900, "cacheReadInputTokens": 900, "cacheCreationInputTokens": 900 },
+                "claude-sonnet-5": { "inputTokens": 5000, "cacheReadInputTokens": 5000, "cacheCreationInputTokens": 5000 }
+            } }
+            """,
+            "opus[1m]");
+        try
+        {
+            WindowResolution r = ContextWindowResolver.Resolve(@"C:\PKM", "claude-opus-5", profile, 200_000);
+
+            Assert.Equal(1_000_000, r.Window);
+            Assert.True(r.Detected);
+        }
+        finally { Directory.Delete(profile, recursive: true); }
+    }
+
+    [Fact]
+    public void Authoritative_usage_match_still_outranks_the_selected_model()
+    {
+        // Precedence guard: when a spelling DOES record the transcript's model, that real evidence wins even
+        // if settings.json names a [1m] model — otherwise a stale selection would mask a true 200K session.
+        string profile = WriteClaudeJsonWithSelectedModel(
+            """
+            "C:/pkm": { "lastModelUsage": {
+                "claude-sonnet-5": { "inputTokens": 5000, "cacheReadInputTokens": 5000, "cacheCreationInputTokens": 5000 }
+            } }
+            """,
+            "opus[1m]");
+        try
+        {
+            WindowResolution r = ContextWindowResolver.Resolve(@"C:\PKM", "claude-sonnet-5", profile, 200_000);
+
+            Assert.Equal(200_000, r.Window);
+            Assert.True(r.Detected);
+            Assert.Equal("claude-sonnet-5", r.Model);
+        }
+        finally { Directory.Delete(profile, recursive: true); }
+    }
+
+    [Fact]
+    public void Stale_first_spelling_does_not_mask_a_later_spelling_carrying_the_active_model()
+    {
+        // Live shape observed 2026-07-27 on C:\PKM: several key spellings of ONE cwd, the FIRST carrying a
+        // usable-but-stale lastModelUsage listing only non-[1m] models, while the actual session model
+        // (claude-opus-5[1m]) is recorded under a LATER spelling. Taking the first usable map reported a
+        // 200K window for a 1M session — 278,521 tokens rendered as "100.0%" instead of ~28%.
+        string profile = WriteClaudeJson(
+            """
+            "C:/pkm": { "lastModelUsage": {
+                "claude-haiku-4-5-20251001": { "inputTokens": 900, "cacheReadInputTokens": 900, "cacheCreationInputTokens": 900 },
+                "claude-sonnet-5": { "inputTokens": 5000, "cacheReadInputTokens": 5000, "cacheCreationInputTokens": 5000 }
+            } },
+            "C:\\PKM": { "lastModelUsage": {
+                "claude-opus-5[1m]": { "inputTokens": 10, "cacheReadInputTokens": 20, "cacheCreationInputTokens": 30 }
+            } }
+            """);
+        try
+        {
+            WindowResolution r = ContextWindowResolver.Resolve(@"C:\PKM", "claude-opus-5", profile, 200_000);
+
+            Assert.Equal(1_000_000, r.Window);
+            Assert.True(r.Detected);
+            Assert.Equal("claude-opus-5[1m]", r.Model);
+        }
+        finally { Directory.Delete(profile, recursive: true); }
+    }
+
+    [Fact]
+    public void Usage_ranked_guess_still_wins_when_no_spelling_carries_the_active_model()
+    {
+        // The authoritative pass must not break the legacy behaviour: when NO spelling lists the transcript's
+        // model, the highest-cumulative-usage key is still chosen and its [1m] suffix still decides the window.
+        string profile = WriteClaudeJson(
+            """
+            "C:/pkm": { "lastModelUsage": {
+                "claude-haiku-4-5-20251001": { "inputTokens": 900, "cacheReadInputTokens": 900, "cacheCreationInputTokens": 900 },
+                "claude-opus-4-8[1m]": { "inputTokens": 5000, "cacheReadInputTokens": 5000, "cacheCreationInputTokens": 5000 }
+            } }
+            """);
+        try
+        {
+            WindowResolution r = ContextWindowResolver.Resolve(@"C:\PKM", "claude-opus-5", profile, 200_000);
+
+            Assert.Equal(1_000_000, r.Window);
+            Assert.True(r.Detected);
+            Assert.Equal("claude-opus-4-8[1m]", r.Model);
+        }
+        finally { Directory.Delete(profile, recursive: true); }
+    }
+
     [Fact]
     public void Cwd_key_normalizes_backslashes_and_case()
     {
