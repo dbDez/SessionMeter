@@ -1,0 +1,24 @@
+# .NET build output
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+
+dist/
+publish-*/
+*.user
+
+# Session continuity and local agent state — never publish.
+# TaskSteps.md is the canonical name (renamed from JobQueue.md, 2026-08-24); both stay ignored.
+ToDo.md
+TasksToComplete.md
+TaskSteps.md
+JobQueue.md
+*.env
+*.env.*
+*.secrets.json
+
+# Regenerable local development knowledge graph — never commit or push.
+graphify-out/

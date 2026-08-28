@@ -1,0 +1,24 @@
+// Register the SessionMeter hooks in Claude Code.
+// Merge this "hooks" block into ~/.claude/settings.json (user-level) or a project's
+// .claude/settings.json. Edit the two file paths to where you saved the .ps1 files.
+// Claude Code accepts comments in settings.json (jsonc); strip them if your editor complains.
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File C:/path/to/examples/hooks/warn-context.ps1",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File C:/path/to/examples/hooks/warn-usage.ps1",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
