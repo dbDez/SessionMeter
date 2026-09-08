@@ -8,10 +8,7 @@
     <RootNamespace>Session</RootNamespace>
     <AssemblyName>Session</AssemblyName>
     <ApplicationIcon>..\..\assets\session.ico</ApplicationIcon>
-    <Version>0.7.2</Version>
-    <AssemblyVersion>0.7.0</AssemblyVersion>
-    <FileVersion>0.7.0</FileVersion>
-    <InformationalVersion>0.7.0</InformationalVersion>
+    <Version>0.8.0</Version>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>

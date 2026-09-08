@@ -31,7 +31,56 @@ return await task;
 // times, or (for API-key / not-signed-in users) an elegant message pointing at `session context`.
 async Task<int> RunUsageAsync(string[] a)
 {
-    bool raw = a.Any(x => x is "--raw" or "-r");
+    bool raw = false;
+    bool codex = false;
+    bool cwdSpecified = false;
+    string cwd = Directory.GetCurrentDirectory();
+    string? sessionId = null;
+
+    for (int i = 1; i < a.Length; i++)
+    {
+        switch (a[i])
+        {
+            case "--raw" or "-r": raw = true; break;
+            case "--codex": codex = true; break;
+            case "--cwd" or "--session":
+                if (i + 1 >= a.Length)
+                {
+                    Console.Error.WriteLine($"session usage: {a[i]} requires a value.");
+                    return 2;
+                }
+                if (a[i] == "--cwd") { cwd = a[++i]; cwdSpecified = true; } else sessionId = a[++i];
+                break;
+            default:
+                Console.Error.WriteLine($"session usage: unknown option '{a[i]}'.");
+                return 2;
+        }
+    }
+
+    if (!codex && (cwdSpecified || sessionId is not null))
+    {
+        Console.Error.WriteLine("session usage: --cwd and --session are supported only with --codex.");
+        return 2;
+    }
+
+    if (codex)
+    {
+        CodexUsageResult codexResult = new CodexUsageSource().Read(cwd, sessionId);
+        if (!codexResult.Ok)
+        {
+            Console.Error.WriteLine($"session usage --codex: {codexResult.Error ?? "no data returned"}");
+            return 1;
+        }
+        if (raw)
+        {
+            Console.WriteLine("Raw Codex rate_limits snapshot");
+            Console.WriteLine("────────────────────────────────────────────────");
+            Console.WriteLine(codexResult.Snapshot!.Raw);
+            Console.WriteLine();
+        }
+        PrintCodexUsageSnapshot(codexResult.Snapshot!);
+        return 0;
+    }
 
     MeterConfig cfg = new();
     using var http = new HttpClient();
@@ -89,6 +138,41 @@ async Task<int> RunUsageAsync(string[] a)
     }
     PrintUsageSnapshot(result.Snapshot!);
     return 0;
+}
+
+static void PrintCodexUsageSnapshot(CodexUsageSnapshot snapshot)
+{
+    Console.WriteLine("Session usage — Codex recorded snapshot");
+    Console.WriteLine("────────────────────────────────────────────────");
+    foreach (CodexRateLimitWindow window in snapshot.Windows)
+    {
+        string reset = window.ResetsAt is { } r
+            ? r <= DateTimeOffset.UtcNow
+                ? $"reset timestamp expired {r:u}"
+                : $"resets {LocalClock.FormatResetLocal(r)} · {r:u}"
+            : "reset time not reported";
+        string scope = string.IsNullOrWhiteSpace(window.Scope) ? "" : $" · {window.Scope}";
+        Console.WriteLine($"  {window.Label,-16}: {window.Percent,5:0.#}% used · {reset}{scope}");
+    }
+
+    string observed = snapshot.ObservedAt is { } at
+        ? $"{at.ToLocalTime():yyyy-MM-ddTHH:mm:sszzz} ({DescribeAge(DateTimeOffset.UtcNow - at)} old)"
+        : "timestamp not reported";
+    string limit = snapshot.LimitName ?? snapshot.LimitId ?? "unnamed";
+    Console.WriteLine($"  observed       : {observed}");
+    Console.WriteLine($"  quota          : {limit} · session {ShortId(snapshot.SessionId)}");
+    Console.WriteLine("  freshness      : refreshed by Codex activity; this command does not poll the service");
+}
+
+static string ShortId(string value) => string.IsNullOrWhiteSpace(value) ? "?" : value[..Math.Min(8, value.Length)];
+
+static string DescribeAge(TimeSpan age)
+{
+    if (age < TimeSpan.Zero) return "clock-ahead";
+    if (age.TotalMinutes < 2) return $"{Math.Max(0, (int)age.TotalSeconds)}s";
+    if (age.TotalHours < 2) return $"{(int)age.TotalMinutes}m";
+    if (age.TotalDays < 2) return $"{(int)age.TotalHours}h";
+    return $"{(int)age.TotalDays}d";
 }
 
 // Pretty-prints the exact JSON body the endpoint returned (for `session usage --raw`). Falls back to the
@@ -217,7 +301,7 @@ static int PrintHelp()
 {
     Console.WriteLine(
 """
-Session — accurate in-session context % + Claude Code usage windows (keyless)
+Session — accurate in-session context % + Claude Code/Codex usage windows (keyless)
 
 Usage:
   session context [--pi|--codex] [--cwd <path>] [--session <id>]
@@ -226,14 +310,14 @@ Usage:
                                    No args = current directory; --cwd reads any directory. With --pi or --codex, --session pins the exact
                                    session ID instead of selecting the newest CWD transcript. Kills the guesswork native `/context` only
                                    shows interactively.
-  session usage [--raw]            Live 5-hour + 7-day rate-limit windows from the OAuth usage endpoint.
-                                   --raw also prints the exact JSON body the endpoint returned.
+  session usage [--raw]            Live Claude 5-hour + 7-day windows from the OAuth usage endpoint.
+  session usage --codex [--cwd <path>] [--session <id>] [--raw]
+                                   Latest Codex rate-limit snapshot recorded in a local rollout.
   session help                     This help.
   session version                  Print the version.
 
-Keyless: `context` reads the local Claude Code, Codex, or Pi session transcript and needs NO login. `usage` needs
-an Anthropic Claude subscription login (Pro/Max OAuth token) — API-key users get a friendly message and
-should use `context`.
+Keyless: `context` and `usage --codex` read local transcripts. Claude `usage` needs an Anthropic subscription
+login (Pro/Max OAuth token). Codex usage is an observed snapshot refreshed by Codex activity, not a live poll.
 
 ⚠️  `session usage` reads the UNDOCUMENTED, unversioned GET /api/oauth/usage endpoint — it may change or
     disappear without notice. `session context` depends only on the local Claude Code, Codex, or Pi transcript format.

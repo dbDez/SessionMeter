@@ -7,6 +7,24 @@ All notable changes to SessionMeter, newest first. Format follows
 > tags when this file was adopted, and are accurate to what each version shipped. They are deliberately
 > written for the person *using* the tool rather than the person who committed it.
 
+## [0.8.0] — 2026-09-08
+
+### Added
+
+- `session usage --codex` reports the latest 5-hour, 7-day, and individually scoped quota windows that
+  Codex recorded in the selected local rollout. It includes reset times, observation age, and the selected
+  session, and can emit the recorded `rate_limits` object with `--raw`.
+- Codex context and usage accept `CODEX_HOME`, `--cwd`, and `--session`; the current Codex invocation is
+  selected from `CODEX_THREAD_ID` / `CODEX_SESSION_ID` before any newest-file fallback.
+
+### Fixed
+
+- Active Codex rollouts can now be read while Codex is appending to them. Earlier reads could silently turn
+  a sharing violation into “no transcript.” Session metadata is parsed structurally, so a CWD mentioned in
+  embedded instructions cannot select the wrong rollout.
+- Codex context no longer assumes Claude's 200K fallback when a rollout omits its window, never double-counts
+  cached input, and labels each measurement with the model recorded by its preceding turn context.
+
 ## [0.7.2] — 2026-08-28
 
 ### Added
