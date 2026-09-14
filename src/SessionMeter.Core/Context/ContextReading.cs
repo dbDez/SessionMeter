@@ -21,7 +21,10 @@ namespace SessionMeter.Core.Context;
 /// True when <paramref name="WindowTokens"/> was detected from Claude Code's recorded per-project model state
 /// (via <see cref="ContextWindowResolver"/>); false when it is the assumed standard fallback.
 /// </param>
-/// <param name="Model">The active model id the window was resolved against, or null when unknown.</param>
+/// <param name="Model">The model id attached to the measured usage block, or null when unknown.</param>
+/// <param name="Provider">The provider attached to the measured usage block, or null when unknown.</param>
+/// <param name="SelectedProvider">The provider Pi most recently selected, when separately recorded.</param>
+/// <param name="SelectedModel">The model Pi most recently selected, when separately recorded.</param>
 public sealed record ContextReading(
     string Name,
     string? SessionId,
@@ -32,7 +35,10 @@ public sealed record ContextReading(
     string? TranscriptPath,
     string? Note = null,
     bool WindowDetected = false,
-    string? Model = null)
+    string? Model = null,
+    string? Provider = null,
+    string? SelectedProvider = null,
+    string? SelectedModel = null)
 {
     /// <summary>True when a real usage measurement was found (a transcript with a usage block).</summary>
     public bool Known => Note is null && SessionId is not null;
@@ -54,13 +60,27 @@ public sealed record ContextReading(
         return $"{Name}: {Pct.ToString("0.0", CultureInfo.InvariantCulture)}% "
              + $"({UsedTokens.ToString("N0", CultureInfo.InvariantCulture)} / "
              + $"{WindowTokens.ToString("N0", CultureInfo.InvariantCulture)} tokens) — "
-             + $"session {sid}, as of {asOf}{WindowSourceSuffix()}";
+             + $"session {sid}, as of {asOf}{WindowSourceSuffix()}{ModelIdentitySuffix()}";
     }
 
     /// <summary>
     /// The short window-source suffix appended to the known-form line, e.g. <c> · 1M window (detected)</c>,
     /// <c> · 200K window (detected)</c>, or <c> · 200K window (assumed)</c> when detection failed.
     /// </summary>
+    private string ModelIdentitySuffix()
+    {
+        if (string.IsNullOrWhiteSpace(Provider) || string.IsNullOrWhiteSpace(Model))
+            return string.Empty;
+
+        string measured = $"{Provider}/{Model}";
+        if (string.IsNullOrWhiteSpace(SelectedProvider) || string.IsNullOrWhiteSpace(SelectedModel) ||
+            (string.Equals(Provider, SelectedProvider, StringComparison.OrdinalIgnoreCase) &&
+             string.Equals(Model, SelectedModel, StringComparison.OrdinalIgnoreCase)))
+            return $" · model {measured}";
+
+        return $" · measured {measured} · selected {SelectedProvider}/{SelectedModel} (awaiting selected-model usage)";
+    }
+
     private string WindowSourceSuffix()
     {
         string size = WindowTokens == 1_000_000 ? "1M" : WindowTokens == 200_000 ? "200K" : $"{WindowTokens:N0}";

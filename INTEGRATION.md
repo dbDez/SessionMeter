@@ -168,8 +168,10 @@ inner call is the same lie as the inner call exiting 0 — and it is harder to f
 
 - **Claude Code** — `session context` (context) **and** `session usage` (5-hour / 7-day / per-model
   rate walls). Both apply.
-- **Pi** — `session context --pi --cwd "<forward-slash-path>"` **only**. Pi is API-backed and has no
-  Claude account rate walls; `session usage` must never drive a Pi decision.
+- **Pi** — rely on Pi's native context display and auto-compaction. Use
+  `session context --pi --cwd "<forward-slash-path>"` only as an explicitly requested, one-shot diagnostic;
+  do not transplant Claude's automatic 50%/60% hook policy into Pi. Pi has no Claude account rate walls, so
+  `session usage` must never drive a Pi decision.
 - **Codex** — `session context --codex` and `session usage --codex`. The rollout records the exact
   `model_context_window` and quota snapshots, so no window or percentage inference is involved. Usage is
   refreshed by Codex activity rather than polled; use its printed observation age. `CODEX_HOME` and the

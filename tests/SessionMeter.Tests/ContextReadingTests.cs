@@ -110,6 +110,28 @@ public sealed class ContextReadingTests
     }
 
     [Fact]
+    public void ToLine_non_pi_model_without_provider_preserves_existing_output_shape()
+    {
+        var reading = new ContextReading(
+            Name: "claude-session",
+            SessionId: "ab12cd34",
+            UsedTokens: 50_000,
+            WindowTokens: 200_000,
+            Pct: 25.0,
+            AsOf: DateTimeOffset.Parse("2026-09-14T10:00:00+02:00"),
+            TranscriptPath: @"C:\x\y.jsonl",
+            WindowDetected: true,
+            Model: "claude-opus-4-8");
+
+        string line = reading.ToLine();
+
+        Assert.EndsWith("· 200K window (detected)", line);
+        Assert.DoesNotContain("· model ", line);
+        Assert.DoesNotContain("· measured ", line);
+        Assert.DoesNotContain("· selected ", line);
+    }
+
+    [Fact]
     public void ToLine_unknown_form_contains_context_unknown_and_note()
     {
         var reading = new ContextReading(

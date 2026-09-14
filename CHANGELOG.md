@@ -7,6 +7,22 @@ All notable changes to SessionMeter, newest first. Format follows
 > tags when this file was adopted, and are accurate to what each version shipped. They are deliberately
 > written for the person *using* the tool rather than the person who committed it.
 
+## [0.8.1] — 2026-09-14
+
+### Fixed
+
+- Pi's built-in models now use the context windows shipped in Pi's installed model catalogue, while custom
+  `models.json` definitions and `modelOverrides` retain Pi's precedence. This fixes
+  `openai-codex/gpt-5.6-sol` being measured against an assumed 200K window instead of its actual 272K window.
+- Pi model switches now keep two identities: the provider/model owning the last persisted usage measurement and
+  the provider/model currently selected. A pending switch is labelled explicitly, and old-model usage is never
+  divided by the newly selected model's window.
+
+### Changed
+
+- Pi setup guidance now treats SessionMeter as a manual persisted-state diagnostic. Pi's native live context
+  display and automatic compaction remain its control surface; Claude and Codex monitoring behavior is unchanged.
+
 ## [0.8.0] — 2026-09-08
 
 ### Added

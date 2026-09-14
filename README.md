@@ -51,8 +51,16 @@ The suffix is one of ` · 1M window (detected)`, ` · 200K window (detected)`, o
 **Seeing `(assumed)` on a large-window model means Tier 0 is not wired up** — fix the status line before
 trusting the number.
 
-For Pi, `session context --pi` reads the active provider/model from Pi's latest assistant message and resolves the
-window from `%USERPROFILE%\.pi\agent\models.json`. This supports custom-provider model windows such as `900,000` when they are declared in Pi's model registry.
+For Pi, `session context --pi` reads the latest successful assistant usage as the measured numerator and resolves
+that exact provider/model pair against Pi's installed built-in catalogue, any newer persisted Pi catalogue,
+and `%USERPROFILE%\.pi\agent\models.json` (custom definitions and `modelOverrides` take precedence, as they do
+in Pi). It separately reads Pi's newest
+`model_change`. Immediately after a switch, output identifies both the old model that owns the measurement and the
+newly selected model; it never divides old-model usage by the new model's window. Once the selected model produces
+its first successful usage block, the reading moves to that model and window.
+
+The CLI reads persisted transcript state, so it can lag Pi's live in-turn footer until the assistant usage block is
+written. Use it as a one-shot diagnostic; Pi's own footer and native auto-compaction remain the live control surface.
 
 For Codex, `session context --codex` reads the newest rollout transcript with a matching `session_meta.cwd`.
 Its latest `token_count` event records the current `last_token_usage.input_tokens` and exact
