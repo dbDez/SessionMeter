@@ -151,6 +151,49 @@ public sealed class ContextMonitorTests
         }
     }
 
+    /// <summary>
+    /// 2026-10-01 field case: a fresh BufferCopy session's first prompt was told 72% (720,218) — the
+    /// PREVIOUS session's figure — because its own transcript had no usage yet and the CWD lookup took the
+    /// folder's newest transcript with usage. A pinned read must answer for THAT session or say unknown.
+    /// </summary>
+    [Fact]
+    public void ReadSession_never_borrows_another_sessions_figure()
+    {
+        const string cwd = @"C:\dev\smpin";
+        string profile = Path.Combine(Path.GetTempPath(), "sm-int-" + Guid.NewGuid().ToString("N"));
+        string projectDir = ContextMonitor.ProjectsDirFor(profile, cwd);
+        Directory.CreateDirectory(projectDir);
+        string old = Path.Combine(projectDir, "aaaa0000-0000-0000-0000-000000000000.jsonl");
+        string fresh = Path.Combine(projectDir, "bbbb0000-0000-0000-0000-000000000000.jsonl");
+        File.WriteAllText(old,
+            """{"timestamp":"2026-09-29T08:00:00+00:00","message":{"model":"claude-opus-5-5","usage":{"input_tokens":2,"cache_read_input_tokens":720000,"cache_creation_input_tokens":216}}}""");
+        File.WriteAllText(fresh, """{"type":"user","message":{"role":"user","content":"hi"}}""");
+        try
+        {
+            var monitor = new ContextMonitor(new MeterConfig());
+
+            ContextReading pinned = monitor.ReadSession(cwd, "bbbb0000-0000-0000-0000-000000000000", "smpin", profile);
+            Assert.False(pinned.Known);
+            Assert.Equal(0, pinned.UsedTokens);
+
+            ContextReading pinnedOld = monitor.ReadSession(cwd, "aaaa0000-0000-0000-0000-000000000000", "smpin", profile);
+            Assert.True(pinnedOld.Known);
+            Assert.Equal(720_218, pinnedOld.UsedTokens);
+
+            // The field shape: the new session's transcript does not exist yet, so the folder's newest
+            // transcript is yesterday's — the unpinned read returns its figure; the pinned one must not.
+            File.Delete(fresh);
+            Assert.Equal(720_218, monitor.Read(cwd, "smpin", profile).UsedTokens);
+            ContextReading notYet = monitor.ReadSession(cwd, "cccc0000-0000-0000-0000-000000000000", "smpin", profile);
+            Assert.False(notYet.Known);
+            Assert.Equal(0, notYet.UsedTokens);
+        }
+        finally
+        {
+            Directory.Delete(profile, recursive: true);
+        }
+    }
+
     [Fact]
     public void Read_escalates_to_1M_when_undetected_usage_exceeds_the_200K_assumption()
     {

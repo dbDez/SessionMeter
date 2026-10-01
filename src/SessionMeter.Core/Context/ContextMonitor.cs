@@ -51,6 +51,20 @@ public sealed class ContextMonitor
     /// <param name="name">Display name; null/blank ⇒ a slug of <paramref name="cwd"/>.</param>
     /// <param name="userProfile">The user-profile root that holds <c>.claude\projects</c>.</param>
     public ContextReading Read(string cwd, string? name, string userProfile)
+        => ReadCore(cwd, name, userProfile, pinnedSessionId: null);
+
+    /// <summary>
+    /// Reads ONE named Claude session — never the folder's newest transcript. Added 0.8.2 (2026-10-01):
+    /// on a session's first prompt its own transcript has no usage block yet, and the CWD lookup
+    /// returned the PREVIOUS session in the same folder (a fresh BufferCopy session was told it stood at
+    /// 72% — yesterday's figure — while it was at ~5%). A pinned read answers "unknown" instead.
+    /// </summary>
+    public ContextReading ReadSession(string cwd, string sessionId, string? name = null, string? userProfile = null)
+        => ReadCore(cwd, name,
+            userProfile ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            pinnedSessionId: sessionId);
+
+    private ContextReading ReadCore(string cwd, string? name, string userProfile, string? pinnedSessionId)
     {
         string label = string.IsNullOrWhiteSpace(name) ? Naming.Slug(cwd) : name!;
         long window = _cfg.WorkerContextWindow > 0 ? _cfg.WorkerContextWindow : 200_000;
@@ -62,9 +76,19 @@ public sealed class ContextMonitor
         if (!Directory.Exists(projectsDir))
             return Unknown(label, window, $"no transcript folder for {cwd} (looked in {projectsDir})");
 
-        string? transcript = FindActiveTranscript(projectsDir);
-        if (transcript is null)
-            return Unknown(label, window, $"no .jsonl session transcript under {projectsDir}");
+        string? transcript;
+        if (!string.IsNullOrWhiteSpace(pinnedSessionId))
+        {
+            transcript = Path.Combine(projectsDir, pinnedSessionId + ".jsonl");
+            if (!File.Exists(transcript))
+                return Unknown(label, window, $"no transcript for session {pinnedSessionId} under {projectsDir}");
+        }
+        else
+        {
+            transcript = FindActiveTranscript(projectsDir);
+            if (transcript is null)
+                return Unknown(label, window, $"no .jsonl session transcript under {projectsDir}");
+        }
 
         string sessionId = Path.GetFileNameWithoutExtension(transcript);
 

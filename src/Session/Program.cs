@@ -281,17 +281,13 @@ int RunContext(string[] a)
         Console.Error.WriteLine("session context: choose either --pi or --codex.");
         return 2;
     }
-    if (!pi && !codex && !string.IsNullOrWhiteSpace(sessionId))
-    {
-        Console.Error.WriteLine("session context: --session is supported only with --pi or --codex.");
-        return 2;
-    }
-
     ContextReading reading = pi
         ? new PiContextMonitor(cfg).Read(cwd, name: null, sessionId)
         : codex
             ? new CodexContextMonitor(cfg).Read(cwd, name: null, sessionId)
-            : new ContextMonitor(cfg).Read(cwd, name: null);
+            : string.IsNullOrWhiteSpace(sessionId)
+                ? new ContextMonitor(cfg).Read(cwd, name: null)
+                : new ContextMonitor(cfg).ReadSession(cwd, sessionId);
     Console.WriteLine(reading.ToLine());
     return 0;
 }
@@ -307,8 +303,9 @@ Usage:
   session context [--pi|--codex] [--cwd <path>] [--session <id>]
                                    Accurate context-window %, read from a local Claude Code transcript
                                    by default, a Pi transcript with --pi, or a Codex transcript with --codex.
-                                   No args = current directory; --cwd reads any directory. With --pi or --codex, --session pins the exact
-                                   session ID instead of selecting the newest CWD transcript. Kills the guesswork native `/context` only
+                                   No args = current directory; --cwd reads any directory. --session pins the exact
+                                   session ID instead of selecting the newest CWD transcript (an unknown reading, never
+                                   another session's, when that session has no usage yet). Kills the guesswork native `/context` only
                                    shows interactively.
   session usage [--raw]            Live Claude 5-hour + 7-day windows from the OAuth usage endpoint.
   session usage --codex [--cwd <path>] [--session <id>] [--raw]

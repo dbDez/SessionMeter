@@ -7,6 +7,17 @@ All notable changes to SessionMeter, newest first. Format follows
 > tags when this file was adopted, and are accurate to what each version shipped. They are deliberately
 > written for the person *using* the tool rather than the person who committed it.
 
+## [0.8.2] — 2026-10-01
+
+### Fixed
+
+- `session context --session <id>` now works for Claude Code too, not only Pi and Codex. It reads exactly that
+  session and reports "unknown" when that session has no usage yet — it never falls back to the folder's
+  newest transcript. Without it, a fresh session's first reading could be the PREVIOUS session's figure in the
+  same folder (a new session was told it stood at 72%, which was yesterday's run).
+- The installed 0.8.1 build predated the Pi model-switch fix that shares its version number; this release
+  carries that fix to installed copies.
+
 ## [0.8.1] — 2026-09-14
 
 ### Fixed
