@@ -152,7 +152,7 @@ bug that triggers a startup-time call and the cross-session borrow. Guard on `$n
 |---|---|---|
 | 0 | Success | Use the reading. |
 | 1 | Genuine failure — expired token, terminal HTTP status, network error, unknown command | Surface it. Do not retry unchanged. |
-| 2 | Bad arguments to `session context` | Fix the call site. |
+| 2 | Bad arguments to `session context` or `session usage` | Fix the call site. |
 | 3 | API-key user / not signed in (`session usage` only) | `session usage` is unavailable; `session context` still works. |
 | 4 | Upstream throttling after retries — 429/5xx (`session usage` only) | **No measurement was taken.** Say so; do not print a stale or assumed figure. |
 
@@ -168,10 +168,14 @@ inner call is the same lie as the inner call exiting 0 — and it is harder to f
 
 - **Claude Code** — `session context` (context) **and** `session usage` (5-hour / 7-day / per-model
   rate walls). Both apply.
-- **Pi** — `session context --pi --cwd "<forward-slash-path>"` **only**. Pi is API-backed and has no
-  Claude account rate walls; `session usage` must never drive a Pi decision.
-- **Codex** — `session context --codex`. Its transcript records the exact `model_context_window`, so
-  no window inference is involved at all.
+- **Pi** — rely on Pi's native context display and auto-compaction. Use
+  `session context --pi --cwd "<forward-slash-path>"` only as an explicitly requested, one-shot diagnostic;
+  do not transplant Claude's automatic 50%/60% hook policy into Pi. Pi has no Claude account rate walls, so
+  `session usage` must never drive a Pi decision.
+- **Codex** — `session context --codex` and `session usage --codex`. The rollout records the exact
+  `model_context_window` and quota snapshots, so no window or percentage inference is involved. Usage is
+  refreshed by Codex activity rather than polled; use its printed observation age. `CODEX_HOME` and the
+  current `CODEX_THREAD_ID` / `CODEX_SESSION_ID` are respected automatically.
 
 Quote the forward-slash path and keep it quoted when calling through a POSIX shell — an unquoted
 Windows backslash path collapses silently.
@@ -196,6 +200,10 @@ Select-String -Path "$env:USERPROFILE\.claude\settings.json" -Pattern '"timeout"
 
 # 4. The reading is sane — no percentage above 100, no USED EXCEEDS WINDOW
 session context --cwd C:/your/project
+
+# 5. Inside Codex, both commands select this exact rollout and report their observation time
+session context --codex --cwd C:/your/project
+session usage --codex --cwd C:/your/project
 ```
 
 A healthy line looks like:

@@ -215,17 +215,20 @@ context on every turn — and risks the very wall you're trying to dodge.
 
 ---
 
-## 3. Wire it into Pi
+## 3. Use it for manual Pi diagnostics
 
-Pi has no Claude-style hooks, but the command works directly from any shell and can be used by a Pi extension
-or footer/status integration:
+Pi already displays live context and auto-compacts natively. Run SessionMeter only when you want an independent,
+one-shot reading of the persisted transcript:
 
 ```powershell
 session context --pi --cwd "C:/Work/ExampleProject"
 ```
 
-It reads `%USERPROFILE%\.pi\agent\sessions\` for the newest matching session header and uses
-`%USERPROFILE%\.pi\agent\models.json` to resolve the active provider/model context window. Custom-provider models can use windows such as `900000` when Pi's model registry declares that value.
+It reads `%USERPROFILE%\.pi\agent\sessions\` for the newest matching session header. The measured model's
+window is resolved from Pi's installed built-in model catalogue, any newer persisted Pi catalogue, and then
+overlaid with custom definitions or `modelOverrides` from `%USERPROFILE%\.pi\agent\models.json`. If the selected model has changed since the last
+successful usage block, the output labels both identities instead of applying the new window to the old usage.
+Because the CLI reads disk, it may trail Pi's live in-turn footer until the usage block is persisted.
 
 ---
 

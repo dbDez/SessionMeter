@@ -7,6 +7,51 @@ All notable changes to SessionMeter, newest first. Format follows
 > tags when this file was adopted, and are accurate to what each version shipped. They are deliberately
 > written for the person *using* the tool rather than the person who committed it.
 
+## [0.8.2] — 2026-10-01
+
+### Fixed
+
+- `session context --session <id>` now works for Claude Code too, not only Pi and Codex. It reads exactly that
+  session and reports "unknown" when that session has no usage yet — it never falls back to the folder's
+  newest transcript. Without it, a fresh session's first reading could be the PREVIOUS session's figure in the
+  same folder (a new session was told it stood at 72%, which was yesterday's run).
+- The installed 0.8.1 build predated the Pi model-switch fix that shares its version number; this release
+  carries that fix to installed copies.
+
+## [0.8.1] — 2026-09-14
+
+### Fixed
+
+- Pi's built-in models now use the context windows shipped in Pi's installed model catalogue, while custom
+  `models.json` definitions and `modelOverrides` retain Pi's precedence. This fixes
+  `openai-codex/gpt-5.6-sol` being measured against an assumed 200K window instead of its actual 272K window.
+- Pi model switches now keep two identities: the provider/model owning the last persisted usage measurement and
+  the provider/model currently selected. A pending switch is labelled explicitly, and old-model usage is never
+  divided by the newly selected model's window.
+
+### Changed
+
+- Pi setup guidance now treats SessionMeter as a manual persisted-state diagnostic. Pi's native live context
+  display and automatic compaction remain its control surface; Claude and Codex monitoring behavior is unchanged.
+
+## [0.8.0] — 2026-09-08
+
+### Added
+
+- `session usage --codex` reports the latest 5-hour, 7-day, and individually scoped quota windows that
+  Codex recorded in the selected local rollout. It includes reset times, observation age, and the selected
+  session, and can emit the recorded `rate_limits` object with `--raw`.
+- Codex context and usage accept `CODEX_HOME`, `--cwd`, and `--session`; the current Codex invocation is
+  selected from `CODEX_THREAD_ID` / `CODEX_SESSION_ID` before any newest-file fallback.
+
+### Fixed
+
+- Active Codex rollouts can now be read while Codex is appending to them. Earlier reads could silently turn
+  a sharing violation into “no transcript.” Session metadata is parsed structurally, so a CWD mentioned in
+  embedded instructions cannot select the wrong rollout.
+- Codex context no longer assumes Claude's 200K fallback when a rollout omits its window, never double-counts
+  cached input, and labels each measurement with the model recorded by its preceding turn context.
+
 ## [0.7.2] — 2026-08-28
 
 ### Added

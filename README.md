@@ -1,8 +1,8 @@
 # Session — kill Claude Code's context guessing
 
 **Session.exe** is a tiny, keyless consumer CLI for Claude Code, Codex, and Pi users. It gives you an **accurate
-in-session context-window %** (the number native `/context` only shows interactively) plus Claude Code's **live
-rate-limit windows** — without an Anthropic API key.
+in-session context-window %** plus Claude Code's live rate-limit windows and Codex's latest locally recorded
+quota snapshot — without an API key.
 
 Two commands:
 
@@ -51,13 +51,23 @@ The suffix is one of ` · 1M window (detected)`, ` · 200K window (detected)`, o
 **Seeing `(assumed)` on a large-window model means Tier 0 is not wired up** — fix the status line before
 trusting the number.
 
-For Pi, `session context --pi` reads the active provider/model from Pi's latest assistant message and resolves the
-window from `%USERPROFILE%\.pi\agent\models.json`. This supports custom-provider model windows such as `900,000` when they are declared in Pi's model registry.
+For Pi, `session context --pi` reads the latest successful assistant usage as the measured numerator and resolves
+that exact provider/model pair against Pi's installed built-in catalogue, any newer persisted Pi catalogue,
+and `%USERPROFILE%\.pi\agent\models.json` (custom definitions and `modelOverrides` take precedence, as they do
+in Pi). It separately reads Pi's newest
+`model_change`. Immediately after a switch, output identifies both the old model that owns the measurement and the
+newly selected model; it never divides old-model usage by the new model's window. Once the selected model produces
+its first successful usage block, the reading moves to that model and window.
+
+The CLI reads persisted transcript state, so it can lag Pi's live in-turn footer until the assistant usage block is
+written. Use it as a one-shot diagnostic; Pi's own footer and native auto-compaction remain the live control surface.
 
 For Codex, `session context --codex` reads the newest rollout transcript with a matching `session_meta.cwd`.
 Its latest `token_count` event records the current `last_token_usage.input_tokens` and exact
 `model_context_window`, so SessionMeter does not guess the limit. `cached_input_tokens` is already part of
-Codex input accounting and is not double-counted.
+Codex input accounting and is not double-counted. When running inside Codex, the current
+`CODEX_THREAD_ID` / `CODEX_SESSION_ID` wins over a newest-file guess. `CODEX_HOME` is respected for portable
+profiles. If the rollout does not record a window, the result is unknown rather than a Claude-sized estimate.
 
 > ⚠️ **Undocumented state.** `.claude.json` is **undocumented, internal Claude Code state** (the same caveat
 > class as the OAuth usage endpoint below) — its shape may change without notice. Detection parses it
@@ -79,6 +89,12 @@ Session usage — live, programmatic (/api/oauth/usage)
 Options:
 
 - `--raw` / `-r` — also print the exact JSON body the endpoint returned.
+- `--codex` — read the latest quota snapshot Codex wrote to the selected local rollout instead of calling
+  Claude's endpoint. Add `--cwd <path>` and/or `--session <id>` to select it exactly. `--raw` prints only the
+  recorded `rate_limits` object.
+
+`session usage --codex` is a snapshot, not a network poll. Its output shows when Codex observed the limits,
+how old the observation is, and whether a reset timestamp has expired. Codex activity refreshes it.
 
 **`usage` needs a Claude _subscription_ login (Pro/Max).** Signing in to Claude Code with a subscription
 stores an OAuth token that this command uses — an Anthropic **API key cannot** read these windows. If you're
@@ -162,6 +178,7 @@ no key to configure:
 | Command | What it reads |
 |---|---|
 | `session usage` | The Claude Code OAuth token in `~/.claude/.credentials.json` (`claudeAiOauth.accessToken`) |
+| `session usage --codex` | Codex `rate_limits` telemetry in the selected local rollout; no credentials |
 | `session context` | Claude Code transcript JSONL under `~/.claude/projects/` |
 | `session context --pi` | Pi transcript JSONL under `~/.pi/agent/sessions/` |
 | `session context --codex` | Codex rollout JSONL under `~/.codex/sessions/` |
