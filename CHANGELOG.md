@@ -7,6 +7,16 @@ All notable changes to SessionMeter, newest first. Format follows
 > tags when this file was adopted, and are accurate to what each version shipped. They are deliberately
 > written for the person *using* the tool rather than the person who committed it.
 
+## [0.8.3] — 2026-11-10
+
+### Fixed
+
+- Claude 5-series models (Opus 5.5, Sonnet 5, Fable 5) are now always measured against their 1M-token window.
+  Claude Code records these models without a "[1m]" marker, and SessionMeter used to read that as the
+  200K window. A headless run that never draws a status bar was told it stood at 94% when it was at 21%.
+- After Claude Code compacts an idle session, the reading now shows the compacted size straight away instead
+  of the last pre-compaction figure. It used to say 48% while the status bar showed 3%, until the next reply.
+
 ## [0.8.2] — 2026-10-01
 
 ### Fixed

@@ -14,7 +14,7 @@ Statuses: IMPLEMENTED means present in source; VERIFIED means exercised by tests
 
 | ID | Requirement | Status | Acceptance |
 |---|---|---|---|
-| CTX-01 | Claude context detection | IMPLEMENTED | Preserve transcript input/cache accounting and native-window/state resolution. |
+| CTX-01 | Claude context detection | IMPLEMENTED | Preserve transcript input/cache accounting and native-window/state resolution. A bare 5-series model key is the 1M window, not 200K evidence; a `compact_boundary` newer than every usage line reports its `postTokens` (0.8.3). |
 | CTX-02 | Pi context detection | VERIFIED | Use the provider/model on the last successful usage block for its numerator and denominator; separately expose the latest selected model. Resolve installed, newer persisted, and custom model windows with provider-scoped identity and custom overrides. A switch must never relabel or re-denominate an old measurement. |
 | CTX-03 | Codex context detection | VERIFIED | All model names use the recorded window, cached input is not double-counted, missing windows are unknown, CODEX_HOME and explicit/current session identity are respected. Model switches must not label an old measurement as a new model. |
 | USE-01 | Claude account usage | IMPLEMENTED | Default usage command preserves OAuth windows, scoped limits, retries and exit codes. |

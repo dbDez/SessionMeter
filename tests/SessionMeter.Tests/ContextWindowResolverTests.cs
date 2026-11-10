@@ -96,20 +96,22 @@ public sealed class ContextWindowResolverTests
     {
         // Precedence guard: when a spelling DOES record the transcript's model, that real evidence wins even
         // if settings.json names a [1m] model — otherwise a stale selection would mask a true 200K session.
+        // 0.8.3: uses a 4.x model on purpose — only there is a bare key real 200K evidence; a bare 5-series
+        // key is the 1M default (Meter1RegressionTests).
         string profile = WriteClaudeJsonWithSelectedModel(
             """
             "C:/work/notes": { "lastModelUsage": {
-                "claude-sonnet-5": { "inputTokens": 5000, "cacheReadInputTokens": 5000, "cacheCreationInputTokens": 5000 }
+                "claude-sonnet-4-5": { "inputTokens": 5000, "cacheReadInputTokens": 5000, "cacheCreationInputTokens": 5000 }
             } }
             """,
             "opus[1m]");
         try
         {
-            WindowResolution r = ContextWindowResolver.Resolve(@"C:\Work\Notes","claude-sonnet-5", profile, 200_000);
+            WindowResolution r = ContextWindowResolver.Resolve(@"C:\Work\Notes","claude-sonnet-4-5", profile, 200_000);
 
             Assert.Equal(200_000, r.Window);
             Assert.True(r.Detected);
-            Assert.Equal("claude-sonnet-5", r.Model);
+            Assert.Equal("claude-sonnet-4-5", r.Model);
         }
         finally { Directory.Delete(profile, recursive: true); }
     }
@@ -464,11 +466,12 @@ public sealed class ContextWindowResolverTests
     }
 
     [Fact]
-    public void Explicit_bracket_evidence_still_outranks_the_5_series_family_default()
+    public void A_bare_5_series_usage_key_is_the_1M_window_not_200K_evidence()
     {
-        // Precedence guard: a stated fact (bare-key match = 200K, this session's ACTUAL recorded usage)
-        // must win over the family-default guess even for a 5-series model — a guess must never pre-empt a
-        // stated fact, exactly like the settings.json-vs-claude.json precedence tests above.
+        // REVERSED 0.8.3 (2026-11-10). This test used to assert 200K, treating a bare-key match as "a stated
+        // fact". It is not: Claude Code records the 5-series ALWAYS bare (no [1m] exists for it), and the
+        // live C:/PKM entry read "claude-opus-5-5" while that session ran to 213,237 tokens without
+        // compacting — impossible on 200K. The old assertion made the daily brief skip three steps.
         string profile = WriteClaudeJson(
             """
             "C:/dev/mo": { "lastModelUsage": {
@@ -479,7 +482,7 @@ public sealed class ContextWindowResolverTests
         {
             WindowResolution r = ContextWindowResolver.Resolve(@"C:\dev\mo", "claude-sonnet-5", profile, 200_000);
 
-            Assert.Equal(200_000, r.Window);
+            Assert.Equal(1_000_000, r.Window);
             Assert.True(r.Detected);
             Assert.Equal("claude-sonnet-5", r.Model);
         }

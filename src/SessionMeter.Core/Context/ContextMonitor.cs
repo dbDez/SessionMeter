@@ -225,14 +225,67 @@ public sealed class ContextMonitor
 
         // Materialise so we can walk from the end; transcripts are line-oriented and modest in size.
         IReadOnlyList<string> all = lines as IReadOnlyList<string> ?? lines.ToList();
+
+        // 0.8.3 (2026-11-10): Claude Code auto-compacts an idle session and writes a `compact_boundary` line
+        // whose compactMetadata.postTokens is the new footprint. Until the next reply lands, the newest usage
+        // line is the PRE-compaction figure (482,724 on 85c6b6ce while the bar showed ~3%), which fired false
+        // Rule-3 stops. A boundary NEWER than every usage line therefore IS the measurement; the older usage
+        // line still supplies the model id for window detection.
+        long? postTokens = null;
+        DateTimeOffset? boundaryTs = null;
         for (int i = all.Count - 1; i >= 0; i--)
         {
             string line = all[i];
             if (string.IsNullOrWhiteSpace(line)) continue;
+            if (postTokens is null && TryReadCompactBoundary(line, out long post, out DateTimeOffset? bts))
+            {
+                postTokens = post;
+                boundaryTs = bts;
+                continue;
+            }
             if (TryReadUsage(line, out long used, out DateTimeOffset? ts, out string? model))
-                return new UsageScan(true, used, ts, model);
+            {
+                return postTokens is { } p
+                    ? new UsageScan(true, p, boundaryTs, model, Compacted: true)
+                    : new UsageScan(true, used, ts, model);
+            }
         }
-        return new UsageScan(false, 0, null, null);
+        return postTokens is { } onlyPost
+            ? new UsageScan(true, onlyPost, boundaryTs, null, Compacted: true)
+            : new UsageScan(false, 0, null, null);
+    }
+
+    /// <summary>
+    /// Reads a <c>{"type":"system","subtype":"compact_boundary","compactMetadata":{"postTokens":N}}</c> line.
+    /// Returns false for any other line, or a boundary without a numeric <c>postTokens</c>.
+    /// </summary>
+    private static bool TryReadCompactBoundary(string line, out long postTokens, out DateTimeOffset? timestamp)
+    {
+        postTokens = 0;
+        timestamp = null;
+        if (!line.Contains("compact_boundary", StringComparison.Ordinal)) return false;
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(line);
+            JsonElement root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("subtype", out JsonElement st) || st.ValueKind != JsonValueKind.String ||
+                st.GetString() != "compact_boundary" ||
+                !root.TryGetProperty("compactMetadata", out JsonElement meta) || meta.ValueKind != JsonValueKind.Object ||
+                !meta.TryGetProperty("postTokens", out JsonElement pt) || pt.ValueKind != JsonValueKind.Number)
+                return false;
+            postTokens = ReadLong(pt);
+            if (root.TryGetProperty("timestamp", out JsonElement tsEl) &&
+                tsEl.ValueKind == JsonValueKind.String &&
+                DateTimeOffset.TryParse(tsEl.GetString(), System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out DateTimeOffset parsed))
+                timestamp = parsed;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -331,4 +384,5 @@ public sealed class ContextMonitor
 /// <param name="UsedTokens">Sum of input + cache-read + cache-creation tokens.</param>
 /// <param name="Timestamp">Timestamp of the measured message, or null when absent.</param>
 /// <param name="Model">The bare <c>message.model</c> id on the measured line (no <c>[1m]</c> marker), or null when absent.</param>
-public readonly record struct UsageScan(bool Found, long UsedTokens, DateTimeOffset? Timestamp, string? Model);
+/// <param name="Compacted">True when the figure is a newer <c>compact_boundary</c>'s <c>postTokens</c>, not a usage line (0.8.3).</param>
+public readonly record struct UsageScan(bool Found, long UsedTokens, DateTimeOffset? Timestamp, string? Model, bool Compacted = false);

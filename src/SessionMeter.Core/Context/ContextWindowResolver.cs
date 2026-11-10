@@ -231,7 +231,11 @@ public static class ContextWindowResolver
                 if (string.Equals(model.Name, baseModel, StringComparison.OrdinalIgnoreCase))
                 {
                     modelKey = model.Name;
-                    window = StandardWindow;
+                    // A bare key means 200K only for the 4.x generation, where 1M was an opt-in "[1m]" beta.
+                    // The 5-series is 1M by default and is ALWAYS recorded bare. Fixed 0.8.3 (2026-11-10): the
+                    // daily brief's headless run (claude-opus-5-5, recorded bare under C:/PKM) read
+                    // "94% (187,360 / 200,000)" — really 21% of 1M — and skipped three steps "for lack of context".
+                    window = IsDefaultLargeWindowFamily(model.Name) ? LargeWindow : StandardWindow;
                     return true;
                 }
             }
@@ -259,7 +263,7 @@ public static class ContextWindowResolver
             return false;
 
         modelKey = bestKey;
-        window = IsLarge(bestKey) ? LargeWindow : StandardWindow;
+        window = IsLarge(bestKey) || IsDefaultLargeWindowFamily(bestKey) ? LargeWindow : StandardWindow;
         return true;
     }
 

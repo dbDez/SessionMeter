@@ -14,7 +14,7 @@
          installer was named SessionMeter-Setup-0.7.2.exe while the binary inside reported version
          0.7.0 — an upgrade nobody could confirm had happened. Deleting the copies is the fix;
          updating them would only re-arm the same drift at the next release. -->
-    <Version>0.8.2</Version>
+    <Version>0.8.3</Version>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
